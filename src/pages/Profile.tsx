@@ -127,7 +127,7 @@ function Record({ p }: { p: Person }) {
           <ChallengeRecord t={t} />
         </header>
 
-        <div className="sticky top-6 z-[5] mt-5 border-y border-line bg-panel/95 px-5 py-2.5 backdrop-blur-md docked:top-0 lg:top-0 lg:px-6">
+        <div className="sticky top-0 z-[5] mt-5 border-y border-line bg-panel/95 px-5 py-2.5 backdrop-blur-md docked:top-0 lg:top-0 lg:px-6">
           <Segmented
             label="Record"
             layoutId="profile-tab"

@@ -81,7 +81,8 @@ export function TopBar() {
           {open && (
             <m.div
               id="lens-menu"
-              className="sheet absolute inset-x-0 top-[calc(100%+6px)] origin-top rounded-[14px] p-2"
+              // solid, not frosted: a blur nested inside the frosted bar lets the page show through in Safari
+              className="absolute inset-x-0 top-[calc(100%+6px)] max-h-[calc(100dvh-80px)] origin-top overflow-y-auto overscroll-contain rounded-[14px] bg-panel p-2 shadow-[0_0_0_1px_var(--line),0_24px_60px_-24px_rgb(20_24_19/0.55)]"
               initial={{ opacity: 0, y: -6, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -4, scale: 0.98 }}

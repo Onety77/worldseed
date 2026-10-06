@@ -94,7 +94,7 @@ function Dossier({ w }: { w: World }) {
     <DistrictTags w={w} inside={inside} onJob={(id) => nav(`/j/${id}`)} />
     <Panel label={`${w.name} dossier`} width="lg" rest={0.52}>
       <Header w={w} onTrade={() => choose('trade')} />
-      <div className="sticky top-6 z-[6] border-y border-line bg-panel/95 backdrop-blur-md docked:top-0 lg:top-0">
+      <div className="sticky top-0 z-[6] border-y border-line bg-panel/95 backdrop-blur-md docked:top-0 lg:top-0">
         <div role="tablist" aria-label="Sections" className="no-scrollbar flex gap-1 overflow-x-auto px-3 lg:px-4">
           {tabs.map((t) => (
             <button

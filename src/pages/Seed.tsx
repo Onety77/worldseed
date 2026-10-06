@@ -124,7 +124,7 @@ export function SeedPage() {
     <>
       {roomy && <LiveCharter d={d} />}
       <Panel label="Seed a world" width="lg" rest={0.56}>
-        <div ref={top} className="sticky top-6 z-[6] border-b border-line bg-panel/95 px-5 pt-4 pb-3 backdrop-blur-md docked:top-0 lg:top-0 lg:px-6 lg:pt-5">
+        <div ref={top} className="sticky top-0 z-[6] border-b border-line bg-panel/95 px-5 pt-4 pb-3 backdrop-blur-md docked:top-0 lg:top-0 lg:px-6 lg:pt-5">
           <div className="flex items-center justify-between gap-3">
             <p className="label">
               Seed a world · step {step + 1} of {steps.length}
