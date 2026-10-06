@@ -10,7 +10,11 @@ import { buildSettlement, disposeGroup, type SettlementInput } from './settlemen
 import { setLook, type Shared } from './kit'
 import { Life } from './life'
 import { District, type Anchor, type DistrictInput } from './district'
+
+/** what a world's district carries, plus what a planet's capital shows */
+export type CityInput = DistrictInput & { runway?: number; proposals?: { key: string; support: number }[] }
 import { ARC, CAPTURE_HALF, Cosmos, GLOBE_R, type PlanetInput } from './cosmos'
+import { Surface, SURFACE_R, type SurfaceInput } from './surface'
 import { buildChunk, buildSite, disposeChunk, disposeSite, lookSite, siteOf, type Chunk, type Site } from './launch'
 
 /*
@@ -193,7 +197,16 @@ export class FieldEngine {
   private capAt = 0
   /** for crossfading land into space: space drawn off screen, laid over the land */
   private fade: { rt: THREE.WebGLRenderTarget; scene: THREE.Scene; cam: THREE.OrthographicCamera; mat: THREE.ShaderMaterial } | null = null
-  private escapeListeners = new Set<(dir: 'out' | 'in') => void>()
+  private escapeListeners = new Set<(dir: 'out' | 'in' | 'up') => void>()
+  // ── standing on a planet ──
+  private surface: { id: string; s: Surface } | null = null
+  private surfaceInput: SurfaceInput | null = null
+  /** 0 in orbit … 1 standing in the planet's capital */
+  private ld = { x: 0, goal: 0 }
+  private lcam: SCam = { tx: 0, ty: 1.2, tz: 0, dist: 44, tilt: 1.16, az: 0 }
+  private lgoal: SCam = { tx: 0, ty: 1.2, tz: 0, dist: 44, tilt: 1.16, az: 0 }
+  private lbase = 44
+  private lcamera = new THREE.PerspectiveCamera(32, 1, 0.3, 6000)
   /** zooming on past the limit: out of the land into space, or back down */
   private over = { k: 0, at: 0 }
   private lastCount = 0
@@ -259,6 +272,7 @@ export class FieldEngine {
     ;(this.scene.fog as THREE.Fog).color.copy(this.sky.fogColor)
     this.shared.uNight.value = k
     this.district?.d.setNight(k)
+    this.surface?.s.setNight(k)
   }
 
   /** honour reduced motion: no drift, cuts instead of camera moves */
@@ -287,8 +301,10 @@ export class FieldEngine {
     this.cosmos.setPlanets(real.filter((w) => w.planet).map((w) => ({ id: w.id, ...w.planet! })))
     // a world still lifting off hasn't reached space yet
     for (const [id, l] of this.lifts) if (!l.replay) this.cosmos.hold(id)
-    // out in space, the framing follows the planets (a new one widens it)
-    if (this.sp.goal === 1) this.setView(this.view)
+    // out in space, the framing follows the planets (a new one widens it); and a world's
+    // page opened before its planet existed goes up to it now
+    const v = this.view
+    if (this.sp.goal === 1 || ((v.kind === 'world' || v.kind === 'district') && this.isPlanet(v.id))) this.setView(v)
     this.wake()
   }
 
@@ -458,6 +474,7 @@ export class FieldEngine {
     const cy = i.top + (h - i.top - i.bottom) / 2
     this.camera.setViewOffset(w, h, w / 2 - cx, h / 2 - cy, w, h)
     this.scamera.setViewOffset(w, h, w / 2 - cx, h / 2 - cy, w, h)
+    this.lcamera.setViewOffset(w, h, w / 2 - cx, h / 2 - cy, w, h)
   }
 
   /** how much to pull back so a subject framed for the full screen fits the open area */
@@ -483,14 +500,26 @@ export class FieldEngine {
     const changed = JSON.stringify(v) !== JSON.stringify(this.view)
     this.view = v
     // a world with its own chain is seen as its planet (unless it is being replayed)
-    const planet = v.kind === 'planet' ? v.id : v.kind === 'world' && this.isPlanet(v.id) ? v.id : null
+    const planet = v.kind === 'planet' ? v.id : (v.kind === 'world' || v.kind === 'district') && this.isPlanet(v.id) ? v.id : null
     if (v.kind === 'space' || planet) {
       this.toSpace(planet, changed)
+      // stepping inside a planet: land on it (once in orbit)
+      const land = v.kind === 'district' && planet !== null && this.ensureSurface(planet)
+      this.ld.goal = land ? 1 : 0
+      if (land) {
+        const fr = this.surfaceFrame()
+        this.lbase = fr.dist
+        this.lgoal = { ...this.lgoal, ...fr }
+        if (this.ld.x === 0) this.lcam = { ...this.lgoal }
+        if (this.reduced && this.sp.x >= 1) this.ld.x = 1
+      } else if (this.reduced) this.ld.x = 0
       this.wake()
       return
     }
     const fromSpace = this.sp.goal === 1
     this.sp.goal = 0
+    this.ld.goal = 0
+    if (this.reduced) this.ld.x = 0
     const room = this.room()
     this.drift = v.kind !== 'plot'
     const w = v.kind === 'world' || v.kind === 'district' ? this.worlds.find((x) => x.id === v.id) : null
@@ -581,14 +610,14 @@ export class FieldEngine {
   }
 
   /** zooming past the end of the land (out) or of space (in) */
-  onEscape(cb: (dir: 'out' | 'in') => void) {
+  onEscape(cb: (dir: 'out' | 'in' | 'up') => void) {
     this.escapeListeners.add(cb)
     return () => {
       this.escapeListeners.delete(cb)
     }
   }
 
-  private overshoot(k: number, dir: 'out' | 'in') {
+  private overshoot(k: number, dir: 'out' | 'in' | 'up') {
     const now = performance.now()
     if (now - this.over.at > 700) this.over.k = 0
     this.over.k += k
@@ -624,7 +653,17 @@ export class FieldEngine {
   }
 
   /** what stands inside a world, for when you step into it; null clears it */
-  setDistrict(input: DistrictInput | null) {
+  setDistrict(input: CityInput | null) {
+    // a planet's world has its capital on the planet, not a district on the land
+    if (input && this.worlds.find((w) => w.id === input.id)?.planet) {
+      this.surfaceInput = { id: input.id, template: input.template, apps: input.apps, jobs: input.jobs, lit: input.lit, runway: input.runway ?? 12, proposals: input.proposals ?? [] }
+      if (this.surface?.id === input.id && this.ld.x === 0) this.dropSurface()
+      return
+    }
+    if (!input) {
+      this.surfaceInput = null
+      if (this.ld.x === 0) this.dropSurface()
+    }
     const same = this.district && input && JSON.stringify(this.district.input) === JSON.stringify(input)
     if (same) return
     if (this.district) {
@@ -643,9 +682,40 @@ export class FieldEngine {
     this.wake()
   }
 
-  /** where the buildings and sites of the open district are, for labels */
+  /** where the buildings and sites of the open district (or the planet's capital) are, for labels */
   districtAnchors(): Anchor[] {
+    if (this.surface && this.ld.goal === 1) return this.surface.s.places
     return this.district?.d.anchors ?? []
+  }
+
+  /** build the capital of a planet, ready to land in; false if there's nothing to land on */
+  private ensureSurface(id: string) {
+    if (this.surface?.id === id) return true
+    const look = this.cosmos.look(id)
+    const input = this.surfaceInput?.id === id ? this.surfaceInput : null
+    if (!look || !input) return false
+    this.dropSurface()
+    const s = new Surface(input, look, (sun) => this.cosmos.homeMaterial(sun), this.shared.uNight, this.quality)
+    s.setNight(this.night.k)
+    this.surface = { id, s }
+    return true
+  }
+
+  private dropSurface() {
+    this.surface?.s.dispose()
+    this.surface = null
+  }
+
+  /** where the camera stands over a capital: the whole city in the open part of the screen */
+  private surfaceFrame(): Omit<SCam, 'az'> {
+    const top = this.surface?.s.top ?? 0
+    const narrow = this.size.w < 700
+    return { tx: 0, ty: top + 1.2, tz: 0, dist: (narrow ? 58 : 42) * Math.sqrt(this.room()), tilt: 1.2 }
+  }
+
+  /** whether the camera is standing on a planet (or on its way down) */
+  landed() {
+    return this.ld.goal === 1
   }
 
   // ── controls, for buttons and keys ──
@@ -660,9 +730,10 @@ export class FieldEngine {
     this.interacted = performance.now()
     this.vel = { tx: 0, tz: 0, az: 0 }
     if (this.sp.goal === 1) {
-      // in space the arrow keys turn round the planet instead
-      this.sgoal.az -= dx * 0.006
-      this.sgoal.tilt = Math.min(1.45, Math.max(0.2, this.sgoal.tilt - dy * 0.003))
+      // in space (and on a planet) the arrow keys turn round instead
+      const g = this.active()
+      g.az -= dx * 0.006
+      g.tilt = this.ld.goal === 1 ? Math.min(1.32, Math.max(0.55, g.tilt - dy * 0.003)) : Math.min(1.45, Math.max(0.2, g.tilt - dy * 0.003))
     } else this.panBy(dx, dy)
     this.wake()
   }
@@ -679,7 +750,8 @@ export class FieldEngine {
     this.vel = { tx: 0, tz: 0, az: 0 }
     const g = this.active()
     g.az = Math.round((g.az - 0.5) / (Math.PI * 2)) * Math.PI * 2 + 0.5
-    if (this.sp.goal === 1) this.sgoal.tilt = this.spaceFrame(this.spaceTarget).tilt
+    if (this.ld.goal === 1) this.lgoal.tilt = this.surfaceFrame().tilt
+    else if (this.sp.goal === 1) this.sgoal.tilt = this.spaceFrame(this.spaceTarget).tilt
     this.setView(this.view)
   }
 
@@ -692,16 +764,17 @@ export class FieldEngine {
 
   /** which way the camera faces, in radians; 0.5 is the usual heading */
   heading() {
-    return this.sp.goal === 1 ? this.scam.az : this.cam.az
+    return this.ld.goal === 1 ? this.lcam.az : this.sp.goal === 1 ? this.scam.az : this.cam.az
   }
 
   /** the camera goal being steered: the land's or space's */
   private active(): { az: number; tilt: number; dist: number } {
-    return this.sp.goal === 1 ? this.sgoal : this.goal
+    return this.ld.goal === 1 ? this.lgoal : this.sp.goal === 1 ? this.sgoal : this.goal
   }
 
   /** a point on screen for any spot in the Field */
   projectPoint(x: number, y: number, z: number) {
+    if (this.ld.x >= 1 && this.surface) return this.projectWith(this.lcamera, new THREE.Vector3(x, y, z))
     return this.project(x, y, z)
   }
 
@@ -768,6 +841,7 @@ export class FieldEngine {
 
   /** a trade or a job at this world: packets run down its roads */
   pulse(id: string) {
+    if (this.surface?.id === id && this.ld.x > 0.5) this.surface.s.trade()
     this.life.pulse(id)
     this.wake()
   }
@@ -776,6 +850,11 @@ export class FieldEngine {
   ping(id: string, kind: 'proof' | 'big' | 'bad' = 'proof') {
     const w = this.worlds.find((x) => x.id === id)
     if (!w) return
+    if (this.surface?.id === id && this.ld.x > 0.5 && kind !== 'bad') {
+      if (!this.reduced) this.surface.s.pulse()
+      this.wake()
+      return
+    }
     const inside = this.district && this.view.kind === 'district' && this.view.id === id && kind === 'proof'
     const at = inside ? this.district!.d.pingSpot() : { x: w.hill.x, z: w.hill.z }
     if (!this.reduced) this.atmos.burst(at.x, heightAt(at.x, at.z, this.hills()) + 1.5, at.z, kind)
@@ -799,6 +878,7 @@ export class FieldEngine {
     const px = clientX - rect.left
     const py = clientY - rect.top
     // out in space: a planet, or 'home' for the home planet; nothing while travelling
+    if (this.ld.goal === 1 || this.ld.x > 0) return null
     if (this.sp.goal === 1 || this.sp.x > 0) return this.sp.goal === 1 && this.sp.x >= 1 ? this.cosmos.pick(px, py, (v) => this.projectWith(this.scamera, v), this.scamera) : null
     let best: { id: string; d: number } | null = null
     for (const w of this.worlds) {
@@ -822,9 +902,11 @@ export class FieldEngine {
     this.renderer.setSize(this.size.w, this.size.h, false)
     this.camera.aspect = this.size.w / this.size.h
     this.scamera.aspect = this.camera.aspect
+    this.lcamera.aspect = this.camera.aspect
     this.applyOffset()
     this.camera.updateProjectionMatrix()
     this.scamera.updateProjectionMatrix()
+    this.lcamera.updateProjectionMatrix()
     this.setView(this.view)
   }
 
@@ -850,6 +932,7 @@ export class FieldEngine {
     for (const id of [...this.lifts.keys()]) this.endLift(id)
     for (const id of [...this.sites.keys()]) this.dropSite(id)
     this.atmos.dispose()
+    this.dropSurface()
     this.cosmos.dispose()
     this.cap?.day.dispose()
     this.cap?.night.dispose()
@@ -970,12 +1053,19 @@ export class FieldEngine {
     const idle = !this.dragging && still > 0 && !this.flight && !this.sflight
     if (this.drift && !this.reduced && idle) {
       const ramp = Math.min(1, still / 3000)
-      this.active().az += dt * ramp * ramp * (space ? (this.spaceTarget ? 0.035 : 0.018) : this.view.kind === 'world' ? 0.04 : this.view.kind === 'district' ? 0.022 : 0.016)
+      this.active().az += dt * ramp * ramp * (this.ld.goal === 1 ? 0.012 : space ? (this.spaceTarget ? 0.035 : 0.018) : this.view.kind === 'world' ? 0.04 : this.view.kind === 'district' ? 0.022 : 0.016)
     }
 
     // the trip between the land and space runs on its own clock
     const sp = this.sp
-    if (sp.x !== sp.goal) {
+    const ld = this.ld
+    // landing waits until the trip up is done; leaving the land waits until you're back in orbit
+    if (ld.x !== ld.goal && !(ld.goal === 1 && sp.x < 1)) {
+      ld.x = this.reduced ? ld.goal : ld.goal > ld.x ? Math.min(1, ld.x + dt / TRIP) : Math.max(0, ld.x - dt / TRIP)
+      moving = true
+      if (ld.x === 0 && !this.surfaceInput) this.dropSurface()
+    }
+    if (sp.x !== sp.goal && !(sp.goal === 0 && ld.x > 0)) {
       // photograph the map on the way up (always before the home planet first shows)
       if (sp.goal === 1 && (!this.cap || (sp.x === 0 && this.capDirty))) this.captureField()
       sp.x = this.reduced ? sp.goal : sp.goal > sp.x ? Math.min(1, sp.x + dt / TRIP) : Math.max(0, sp.x - dt / TRIP)
@@ -1006,6 +1096,15 @@ export class FieldEngine {
         const next = this.reduced ? this.sgoal[key] : lerp(this.scam[key], this.sgoal[key], k)
         if (Math.abs(next - this.sgoal[key]) > 0.002) moving = true
         this.scam[key] = next
+      }
+    }
+    // the camera over a capital
+    if (this.surface && (ld.goal === 1 || ld.x > 0)) {
+      const k = 1 - Math.pow(this.dragging ? 0.000002 : 0.0015, dt)
+      for (const key of ['tx', 'ty', 'tz', 'dist', 'tilt', 'az'] as const) {
+        const next = this.reduced ? this.lgoal[key] : lerp(this.lcam[key], this.lgoal[key], k)
+        if (Math.abs(next - this.lgoal[key]) > 0.002) moving = true
+        this.lcam[key] = next
       }
     }
     // planets turn and orbit: space is never quite still
@@ -1271,14 +1370,51 @@ export class FieldEngine {
       const pb = new THREE.Vector3(sc.tx + Math.sin(sc.az) * Math.sin(sc.tilt) * sc.dist, sc.ty + Math.cos(sc.tilt) * sc.dist, sc.tz + Math.cos(sc.az) * Math.sin(sc.tilt) * sc.dist)
       this.scamera.position.lerpVectors(pa, pb, open)
       this.scamera.up.lerpVectors(n, new THREE.Vector3(0, 1, 0), open).normalize()
-      this.scamera.lookAt(ta.lerp(tb, open))
+      const st = ta.lerp(tb, open)
+      // landing: dive at the capital, hand over to the planet at walking scale, settle over the city
+      const lx = ld.x
+      const sf = this.surface
+      const capital = lx > 0 && sf ? this.cosmos.capital(sf.id) : null
+      const dive = inOut(clamp01(lx / 0.45))
+      const handover = smooth(0.36, 0.52, lx)
+      const settle = inOut(clamp01((lx - 0.45) / 0.55))
+      const high = 1.25
+      if (capital && dive > 0) {
+        // swing round the planet (never through it) to hang over the capital
+        const center = capital.point.clone().addScaledVector(capital.normal, -capital.r)
+        const from = this.scamera.position.clone().sub(center)
+        const d0 = from.length()
+        const q = new THREE.Quaternion().setFromUnitVectors(from.normalize(), capital.normal)
+        const dir = from.applyQuaternion(new THREE.Quaternion().slerp(q, dive))
+        this.scamera.position.copy(center).addScaledVector(dir, lerp(d0, capital.r * (1 + high), dive))
+        this.scamera.up.lerp(capital.north, dive).normalize()
+        st.lerp(capital.point, dive)
+      }
+      this.scamera.lookAt(st)
       this.scamera.updateMatrixWorld()
-      this.cosmos.step(dt, (now - this.t0) / 1000, this.scamera, this.renderer.getPixelRatio(), { focus: this.spaceTarget, hover: this.hover, still: this.reduced })
-      if (over >= 1) this.renderer.render(this.cosmos.scene, this.scamera)
-      else this.crossfade(over)
+      this.cosmos.step(dt, (now - this.t0) / 1000, this.scamera, this.renderer.getPixelRatio(), { focus: this.spaceTarget, hover: this.hover, still: this.reduced, present: sf && (ld.goal === 1 || lx > 0) ? { id: sf.id, night: this.night.k } : null })
+      if (capital && sf && handover > 0) {
+        // the city camera starts as high over the capital as the dive ended, at this scale
+        const top = sf.s.top
+        const lc = this.lcam
+        const pa2 = new THREE.Vector3(0, top + high * SURFACE_R, 0.001)
+        const pb2 = new THREE.Vector3(lc.tx + Math.sin(lc.az) * Math.sin(lc.tilt) * lc.dist, lc.ty + Math.cos(lc.tilt) * lc.dist, lc.tz + Math.cos(lc.az) * Math.sin(lc.tilt) * lc.dist)
+        this.lcamera.position.lerpVectors(pa2, pb2, settle)
+        this.lcamera.up.set(0, 0, -1).lerp(new THREE.Vector3(0, 1, 0), settle).normalize()
+        this.lcamera.lookAt(new THREE.Vector3(0, top, 0).lerp(new THREE.Vector3(lc.tx, lc.ty, lc.tz), settle))
+        this.lcamera.updateMatrixWorld()
+        if (sf.s.step(dt, (now - this.t0) / 1000, this.lcamera, this.renderer.getPixelRatio(), this.reduced) && !this.reduced) moving = true
+        if (handover < 1) {
+          if (over >= 1) this.renderer.render(this.cosmos.scene, this.scamera)
+          else this.crossfade(over, this.cosmos.scene, this.scamera)
+          this.crossfade(handover, sf.s.scene, this.lcamera)
+        } else this.renderer.render(sf.s.scene, this.lcamera)
+      } else if (over >= 1) this.renderer.render(this.cosmos.scene, this.scamera)
+      else this.crossfade(over, this.cosmos.scene, this.scamera)
     }
 
-    if (this.listeners.size && x > 0) this.listeners.forEach((f) => f(this.spaceLabels(x)))
+    if (this.listeners.size && ld.x > 0) this.listeners.forEach((f) => f(this.spaceLabels(0)))
+    else if (this.listeners.size && x > 0) this.listeners.forEach((f) => f(this.spaceLabels(x)))
     else if (this.listeners.size) {
       const hills = this.hills()
       const out: Projected[] = this.worlds.map((w) => {
@@ -1296,7 +1432,7 @@ export class FieldEngine {
   }
 
   /** lay space over the land at some strength, for the moment one hands over to the other */
-  private crossfade(k: number) {
+  private crossfade(k: number, scene: THREE.Scene, camera: THREE.Camera) {
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2())
     if (!this.fade) {
       const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType })
@@ -1317,7 +1453,7 @@ export class FieldEngine {
     const f = this.fade
     if (f.rt.width !== size.x || f.rt.height !== size.y) f.rt.setSize(size.x, size.y)
     this.renderer.setRenderTarget(f.rt)
-    this.renderer.render(this.cosmos.scene, this.scamera)
+    this.renderer.render(scene, camera)
     this.renderer.setRenderTarget(null)
     f.mat.uniforms.uK.value = k
     const auto = this.renderer.autoClear
@@ -1328,7 +1464,7 @@ export class FieldEngine {
 
   /** name tags in space: the planets and the home planet; none while travelling */
   private spaceLabels(x: number): Projected[] {
-    const show = this.sp.goal === 1 && x > 0.9
+    const show = this.sp.goal === 1 && x > 0.9 && this.ld.x === 0
     const cam = this.scamera
     const up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1)
     const eye = cam.position
@@ -1388,7 +1524,7 @@ export class FieldEngine {
     /** turning round: the land keeps a survey's tilt, space lets you look from almost any side */
     const tiltBy = (d: number) => {
       const g = this.active()
-      g.tilt = this.sp.goal === 1 ? Math.min(1.45, Math.max(0.2, g.tilt + d)) : Math.min(1.2, Math.max(0.5, g.tilt + d))
+      g.tilt = this.ld.goal === 1 ? Math.min(1.32, Math.max(0.55, g.tilt + d)) : this.sp.goal === 1 ? Math.min(1.45, Math.max(0.2, g.tilt + d)) : Math.min(1.2, Math.max(0.5, g.tilt + d))
     }
 
     const pairState = () => {
@@ -1542,6 +1678,14 @@ export class FieldEngine {
   }
 
   private zoom(f: number) {
+    if (this.ld.goal === 1) {
+      const lo = this.lbase * 0.42, hi = this.lbase * 2
+      // zooming on out from a capital takes you back up to orbit
+      if (f > 1 && this.lgoal.dist >= hi * 0.999) this.overshoot(Math.log(f), 'up')
+      this.lgoal.dist = Math.min(hi, Math.max(lo, this.lgoal.dist * f))
+      this.wake()
+      return
+    }
     if (this.sp.goal === 1) {
       const home = !this.spaceTarget
       const lo = this.sbase * (home ? 0.5 : 0.45)

@@ -31,7 +31,7 @@ export const ARC = 64
 export const CAPTURE_HALF = 76
 
 // 3D simplex noise (Ian McEwan, Ashima Arts; MIT)
-const noise = glsl`
+export const NOISE = glsl`
 vec3 mod289(vec3 x) { return x - floor(x * (1. / 289.)) * 289.; }
 vec4 mod289(vec4 x) { return x - floor(x * (1. / 289.)) * 289.; }
 vec4 permute(vec4 x) { return mod289(((x * 34.) + 1.) * x); }
@@ -114,7 +114,7 @@ const bakeFS = glsl`
 uniform vec3 uDeep, uShallow, uLow, uMid, uHigh, uIce;
 uniform float uSeed, uSea, uIceCap, uLava, uBands, uLightsK, uCrater, uPass;
 varying vec2 vUv;
-${noise}
+${NOISE}
 void main() {
   float lon = (vUv.x - .5) * 6.2831853;
   float lat0 = (vUv.y - .5) * 3.14159265;
@@ -124,6 +124,9 @@ void main() {
   vec3 w = vec3(fbm3(q + 3.1), fbm3(q + 7.7), fbm3(q + 11.3));
   // big continents first; the fine octaves only roughen their coasts
   float h = fbm3(q + w * .45) * .8 + fbm(q * 2.6 + w) * .22;
+  // the capital stands on its own land, facing out from the planet's equator
+  float cap = smoothstep(.86, .975, dot(p, vec3(0., 0., 1.)));
+  h += cap * .6;
   vec3 col;
   float land = 1.;
   float wet = 0.;
@@ -160,7 +163,7 @@ void main() {
   // towns gather in a few regions; inside them, a fine scatter of lights joined up
   float cities = 0.;
   if (uLightsK > 0.) {
-    float region = smoothstep(.12, .42, fbm3(p * 2.6 + uSeed * 1.7));
+    float region = max(smoothstep(.12, .42, fbm3(p * 2.6 + uSeed * 1.7)), smoothstep(.9, .99, dot(p, vec3(0., 0., 1.))));
     float towns = smoothstep(.35, .85, snoise(p * 22. + uSeed));
     float grain = .55 + .45 * smoothstep(.2, .9, snoise(p * 90. + uSeed * 3.));
     cities = region * towns * grain * uLightsK * max(land, uBands * .35) * (1. - uLava * .75);
@@ -253,7 +256,7 @@ uniform vec3 uSun, uC, uA, uB, uNormal;
 uniform float uR, uIn, uOut, uSeed, uK;
 varying vec3 vL;
 varying vec3 vW;
-${noise}
+${NOISE}
 void main() {
   float r = (length(vL.xy) - uIn) / (uOut - uIn);
   // broad bands, and finer ones only as fine as the screen can show without shimmering
@@ -281,7 +284,7 @@ uniform float uArc, uHalf, uHave;
 varying vec3 vP;
 varying vec3 vN;
 varying vec3 vW;
-${noise}
+${NOISE}
 vec3 corners(sampler2D t) {
   return (texture2D(t, vec2(.02, .02)).rgb + texture2D(t, vec2(.98, .02)).rgb + texture2D(t, vec2(.02, .98)).rgb + texture2D(t, vec2(.98, .98)).rgb) * .25;
 }
@@ -350,7 +353,7 @@ void main() {
 const bandVS = glsl`
 uniform vec3 uN, uA, uB;
 varying vec3 vC;
-${noise}
+${NOISE}
 void main() {
   vec3 d = normalize(position);
   float lat = dot(d, uN);
@@ -368,7 +371,7 @@ void main() {
 
 // ── what each kind of world looks like from space ──
 
-interface Style {
+export interface Style {
   deep: string
   shallow: string
   low: string
@@ -383,22 +386,24 @@ interface Style {
   iceCap: number
   lava?: boolean
   bands?: boolean
+  /** the tended ground round a capital */
+  field?: string
   ring: [string, string]
 }
 
 const STYLES: Record<Template, Style> = {
   // a warm trading world: ochre and terracotta continents, teal seas
-  defi: { deep: '#123f58', shallow: '#2f8496', low: '#8f7a4c', mid: '#b07a4e', high: '#dcc49a', ice: '#dfe6ea', atmos: '#a6dcec', lights: '#ffc46b', sea: 0.02, iceCap: 2, ring: ['#ddc7a2', '#8e7056'] },
+  defi: { deep: '#123f58', shallow: '#2f8496', low: '#8f7a4c', mid: '#b07a4e', high: '#dcc49a', ice: '#dfe6ea', atmos: '#a6dcec', lights: '#ffc46b', field: '#9aa45e', sea: 0.02, iceCap: 2, ring: ['#ddc7a2', '#8e7056'] },
   // an ocean of agents: mostly sea, cool slate islands, ice at both poles
-  agents: { deep: '#0f2b50', shallow: '#2f72a8', low: '#4f735f', mid: '#6f8a72', high: '#9aa596', ice: '#d6e2ea', atmos: '#8ab9ff', lights: '#d4e6ff', sea: 0.12, iceCap: 2, ring: ['#c9d3dc', '#7d8ea0'] },
+  agents: { deep: '#0f2b50', shallow: '#2f72a8', low: '#4f735f', mid: '#6f8a72', high: '#9aa596', ice: '#d6e2ea', atmos: '#8ab9ff', lights: '#d4e6ff', field: '#6f8f6c', sea: 0.12, iceCap: 2, ring: ['#c9d3dc', '#7d8ea0'] },
   // volcanic: basalt, ash plains and rivers of fire
-  game: { deep: '#141012', shallow: '#221a19', low: '#2e2522', mid: '#4a3d37', high: '#7a6b61', ice: '#cfc6c0', atmos: '#c96a45', lights: '#ff9a4a', sea: -0.1, iceCap: 2, lava: true, ring: ['#b98d6e', '#4f3a31'] },
+  game: { deep: '#141012', shallow: '#221a19', low: '#2e2522', mid: '#4a3d37', high: '#7a6b61', ice: '#cfc6c0', atmos: '#c96a45', lights: '#ff9a4a', field: '#3a302c', sea: -0.1, iceCap: 2, lava: true, ring: ['#b98d6e', '#4f3a31'] },
   // lush: deep green continents, turquoise shallows
-  creator: { deep: '#11485a', shallow: '#3aa59a', low: '#437f37', mid: '#6fa349', high: '#d3cc98', ice: '#dce8e4', atmos: '#9df2d6', lights: '#ffd27a', sea: 0.03, iceCap: 2, ring: ['#cfe6d6', '#7da393'] },
+  creator: { deep: '#11485a', shallow: '#3aa59a', low: '#437f37', mid: '#6fa349', high: '#d3cc98', ice: '#dce8e4', atmos: '#9df2d6', lights: '#ffd27a', field: '#7aac52', sea: 0.03, iceCap: 2, ring: ['#cfe6d6', '#7da393'] },
   // a banded giant of forecasters
   prediction: { deep: '#2c3566', shallow: '#4b5e97', low: '#55649f', mid: '#cfd0e3', high: '#a184c4', ice: '#eef0f8', atmos: '#aab6ff', lights: '#d9e1ff', sea: 0, iceCap: 2, bands: true, ring: ['#d6d8ee', '#7f86b8'] },
   // dunes and a few dark lakes
-  frontier: { deep: '#204f60', shallow: '#468d96', low: '#b8935c', mid: '#d4b47a', high: '#f0e2bd', ice: '#e6e2d8', atmos: '#f4dcae', lights: '#ffcf80', sea: -0.34, iceCap: 2, ring: ['#e6d5b0', '#a68b62'] },
+  frontier: { deep: '#204f60', shallow: '#468d96', low: '#b8935c', mid: '#d4b47a', high: '#f0e2bd', ice: '#e6e2d8', atmos: '#f4dcae', lights: '#ffcf80', field: '#c4a86e', sea: -0.34, iceCap: 2, ring: ['#e6d5b0', '#a68b62'] },
 }
 const MOON: Style = { deep: '#000000', shallow: '#000000', low: '#77736d', mid: '#9c978f', high: '#c9c4ba', ice: '#e8e6e1', atmos: '#000000', lights: '#000000', sea: -9, iceCap: 2, ring: ['#000000', '#000000'] }
 
@@ -637,6 +642,7 @@ export class Cosmos {
       if (prev && prev.key === key) {
         prev.orbit.radius = radius
         prev.line.scale.setScalar(radius)
+        if (!prev.arrival) this.place(prev)
         return
       }
       if (prev) this.drop(prev)
@@ -648,6 +654,7 @@ export class Cosmos {
         p.arrival = prev.arrival
       }
       this.planets.set(input.id, p)
+      if (!p.arrival) this.place(p)
     })
   }
 
@@ -720,6 +727,12 @@ export class Cosmos {
     p.maps.forEach((m) => m.dispose())
   }
 
+  /** where a planet is on its orbit right now */
+  private place(p: Planet) {
+    const a = p.orbit.phase + this.orbitT * p.orbit.speed
+    p.group.position.set(Math.cos(a) * p.orbit.radius, 0, Math.sin(a) * p.orbit.radius).applyQuaternion(p.orbit.q)
+  }
+
   /** keep a planet out of sight while its world is still lifting off the land */
   hold(id: string) {
     const p = this.planets.get(id)
@@ -735,6 +748,30 @@ export class Cosmos {
     p.held = false
     p.shown = 1
     p.arrival = { from, k: 0 }
+  }
+
+  /** what a planet looks like, for standing on it: its style and its painted surface */
+  look(id: string) {
+    const p = this.planets.get(id)
+    return p ? { style: STYLES[p.input.template], map: p.maps[0].texture, mask: p.maps[1].texture, template: p.input.template } : null
+  }
+
+  /** the capital's spot on a planet, in space: where it is, which way is up there, and which way is north */
+  capital(id: string) {
+    const p = this.planets.get(id)
+    if (!p) return null
+    p.body.updateWorldMatrix(true, false)
+    const m = p.body.matrixWorld
+    const point = new THREE.Vector3(0, 0, 1).applyMatrix4(m)
+    const center = new THREE.Vector3().setFromMatrixPosition(m)
+    const normal = point.clone().sub(center).normalize()
+    const north = new THREE.Vector3(0, 1, 0).transformDirection(m)
+    return { point, normal, north, r: p.r * Math.max(0.001, p.group.scale.x) }
+  }
+
+  /** the home planet as seen from somewhere else, lit by that place's own sun */
+  homeMaterial(sun: { value: THREE.Vector3 }) {
+    return new THREE.ShaderMaterial({ vertexShader: bodyVS, fragmentShader: globeFS, uniforms: { ...this.globeU, uSun: sun } })
   }
 
   ids() {
@@ -755,7 +792,7 @@ export class Cosmos {
     return m
   }
 
-  step(dt: number, t: number, camera: THREE.Camera, px: number, look: { focus: string | null; hover: string | null; still: boolean }) {
+  step(dt: number, t: number, camera: THREE.Camera, px: number, look: { focus: string | null; hover: string | null; still: boolean; present?: { id: string; night: number } | null }) {
     if (!look.still) this.orbitT += dt
     const ex = new THREE.Vector3()
     for (const [id, p] of this.planets) {
@@ -764,8 +801,7 @@ export class Cosmos {
       if (p.held) continue
       p.shown = look.still ? 1 : Math.min(1, p.shown + dt * 0.45)
       let e = 1 - Math.pow(1 - p.shown, 3)
-      const a = p.orbit.phase + this.orbitT * p.orbit.speed
-      p.group.position.set(Math.cos(a) * p.orbit.radius, 0, Math.sin(a) * p.orbit.radius).applyQuaternion(p.orbit.q)
+      this.place(p)
       // arriving: out from the home planet on a curve, small and bright, growing into its orbit
       let flare = 0
       const ar = p.arrival
@@ -787,7 +823,15 @@ export class Cosmos {
         }
       }
       p.group.scale.setScalar(Math.max(0.001, e))
-      if (!look.still) p.body.rotation.y += dt * p.spin
+      if (look.present?.id === id) {
+        // landing: the planet turns its capital to the sun (or, at night, away from it)
+        p.tilt.updateWorldMatrix(true, false)
+        const s = this.sun.value.clone().transformDirection(p.tilt.matrixWorld.clone().invert())
+        const want = Math.atan2(s.x, s.z) + (look.present.night > 0.5 ? Math.PI : 0) - 0.35
+        let d = want - p.body.rotation.y
+        d = Math.atan2(Math.sin(d), Math.cos(d))
+        p.body.rotation.y += look.still ? d : d * (1 - Math.pow(0.04, dt))
+      } else if (!look.still) p.body.rotation.y += dt * p.spin
       const on = look.focus === id ? 1 : look.hover === id ? 0.6 : 0
       const am = p.atmos.material as THREE.ShaderMaterial
       am.uniforms.uC.value.copy(p.group.position)

@@ -199,7 +199,7 @@ function Sync({ engine }: { engine: FieldEngine }) {
   useEffect(() => onTrade((id) => engine.pulse(id)), [engine])
   // zooming out past the whole map lifts you into space; zooming into the home planet brings you down
   const nav = useNavigate()
-  useEffect(() => engine.onEscape((dir) => nav(dir === 'out' ? '/sovereignty' : '/')), [engine, nav])
+  useEffect(() => engine.onEscape((dir) => dir !== 'up' && nav(dir === 'out' ? '/sovereignty' : '/')), [engine, nav])
   const seen = useRef(new Set<string>())
   useEffect(() => {
     for (const p of pings) {

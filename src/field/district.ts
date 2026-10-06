@@ -25,7 +25,7 @@ export interface DistrictInput {
 
 export interface Anchor {
   key: string
-  kind: 'app' | 'job'
+  kind: 'app' | 'job' | 'market' | 'vault' | 'hall' | 'tower' | 'port'
   x: number
   y: number
   z: number

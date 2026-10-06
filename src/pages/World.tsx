@@ -12,7 +12,7 @@ import { preset } from '@/lib/templates'
 import { clock, count, hash, pct, price, usd } from '@/lib/format'
 import { dayOf } from '@/lib/world'
 import { SPRING_UI, fadeUp, surface } from '@/lib/motion'
-import { useFieldView } from '@/field/Field'
+import { useField, useFieldView } from '@/field/Field'
 import { useLabels } from '@/components/shell/Shell'
 import { Panel } from '@/components/shell/Panel'
 import { WorldMark } from '@/components/ui/WorldMark'
@@ -77,6 +77,9 @@ function Dossier({ w }: { w: World }) {
   useFieldView({ kind: inside ? 'district' : 'world', id: w.id }, inside ? null : w.id)
   const none = useCallback(() => null, [])
   useLabels(none, inside ? null : w.id, true, inside ? w.id : null)
+  // zooming out from a planet's capital goes back up to orbit
+  const engine = useField()
+  useEffect(() => engine?.onEscape((d) => d === 'up' && setInside(false)), [engine])
   useEffect(() => {
     if (!inside) return
     const key = (e: KeyboardEvent) => {
@@ -91,7 +94,7 @@ function Dossier({ w }: { w: World }) {
   return (
     <>
     {replay ? <Replay w={w} onClose={closeReplay} /> : <StepInside w={w} inside={inside} onToggle={() => setInside((v) => !v)} onReplay={() => setReplay(true)} />}
-    <DistrictTags w={w} inside={inside} onJob={(id) => nav(`/j/${id}`)} />
+    <DistrictTags w={w} inside={inside} onJob={(id) => nav(`/j/${id}`)} onTab={choose} />
     <Panel label={`${w.name} dossier`} width="lg" rest={0.52}>
       <Header w={w} onTrade={() => choose('trade')} />
       <div className="sticky top-0 z-[6] border-y border-line bg-panel/95 backdrop-blur-md docked:top-0 lg:top-0">
