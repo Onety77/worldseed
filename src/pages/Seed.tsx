@@ -13,6 +13,8 @@ import { buttonClass } from '@/lib/button'
 import { EASE_OUT, SPRING_UI } from '@/lib/motion'
 import { blank, draft, draftHash, toWorld, POLICIES, type Draft } from '@/lib/draft'
 import { continent } from '@/field/height'
+import { listToken } from '@/lib/market'
+import { notify } from '@/lib/inbox'
 import { hillFor } from '@/field/fromWorld'
 import { draftHill, useCover, useField, useFieldView } from '@/field/Field'
 import { useLabels } from '@/components/shell/Shell'
@@ -107,7 +109,9 @@ export function SeedPage() {
       () => {
         const w = toWorld(d, plot, worlds.map((x) => x.id))
         engine?.adopt('draft', w.id)
+        listToken(w.id, w.priceUsd)
         plant(w)
+        notify({ kind: 'planted', title: `${w.name} is planted`, body: `Charter stored, ${w.ticker} trading on its pons curve, governor started on Genesis.`, worldId: w.id, href: `/w/${w.id}` })
         draftHill.set(null)
         draft.set(blank)
         nav(`/w/${w.id}`, { state: { planted: true } })
@@ -120,7 +124,7 @@ export function SeedPage() {
     <>
       {roomy && <LiveCharter d={d} />}
       <Panel label="Seed a world" width="lg" rest={0.56}>
-        <div ref={top} className="sticky top-5 z-[6] border-b border-line bg-panel/95 px-5 pt-4 pb-3 backdrop-blur-md lg:top-0 lg:px-6 lg:pt-5">
+        <div ref={top} className="sticky top-6 z-[6] border-b border-line bg-panel/95 px-5 pt-4 pb-3 backdrop-blur-md lg:top-0 lg:px-6 lg:pt-5">
           <div className="flex items-center justify-between gap-3">
             <p className="label">
               Seed a world · step {step + 1} of {steps.length}

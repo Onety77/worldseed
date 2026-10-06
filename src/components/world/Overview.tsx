@@ -12,6 +12,7 @@ import { Meter } from '@/components/ui/bits'
 import { EvidenceRow } from '@/components/evidence/EvidenceRow'
 import type { Tab } from '@/pages/World'
 import { Card, Section } from './parts'
+import { LiveGovernor } from './LiveGovernor'
 
 export function Overview({ w, go }: { w: World; go: (t: Tab) => void }) {
   const ev = useEvidence().filter((e) => e.worldId === w.id)
@@ -20,6 +21,9 @@ export function Overview({ w, go }: { w: World; go: (t: Tab) => void }) {
 
   return (
     <>
+      <div className="px-5 pt-5 lg:px-6">
+        <LiveGovernor w={w} />
+      </div>
       <Section title="Eras" note="A world earns each era with a verified milestone. Fail one and holders choose how to recover.">
         <Terraces w={w} />
         <div className="mt-3 grid gap-2">

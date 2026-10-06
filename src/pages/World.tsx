@@ -25,9 +25,14 @@ import { TreasuryTab } from '@/components/world/TreasuryTab'
 import { WorkTab } from '@/components/world/WorkTab'
 import { GovernanceTab } from '@/components/world/GovernanceTab'
 import { NotFound } from './NotFound'
+import { TradeTab } from '@/components/world/TradeTab'
+import { DistrictTags, StepInside, useDistrict } from '@/components/world/District'
+import { usePrice } from '@/lib/market'
+import { buttonClass } from '@/lib/button'
 
 const tabs = [
   { id: 'overview', name: 'Overview' },
+  { id: 'trade', name: 'Trade' },
   { id: 'log', name: 'Governor log' },
   { id: 'charter', name: 'Charter' },
   { id: 'treasury', name: 'Treasury' },
@@ -39,9 +44,6 @@ export type Tab = (typeof tabs)[number]['id']
 export function WorldPage() {
   const { id } = useParams()
   const w = useWorld(id)
-  useFieldView(w ? { kind: 'world', id: w.id } : null, w?.id ?? null)
-  const none = useCallback(() => null, [])
-  useLabels(none, w?.id ?? null, true)
   useTitle(w?.name)
   if (!w) return <NotFound />
   return <Dossier key={w.id} w={w} />
@@ -63,10 +65,26 @@ function Dossier({ w }: { w: World }) {
     nav({ hash: t === 'overview' ? '' : t }, { replace: true })
   }
 
+  // stepping inside: the Field moves in close and the district stands up
+  const [inside, setInside] = useState(false)
+  useDistrict(w, inside)
+  useFieldView({ kind: inside ? 'district' : 'world', id: w.id }, inside ? null : w.id)
+  const none = useCallback(() => null, [])
+  useLabels(none, inside ? null : w.id, true, inside ? w.id : null)
+  useEffect(() => {
+    if (!inside) return
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('[role="dialog"]') && setInside(false)
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [inside])
+
   return (
+    <>
+    <StepInside w={w} inside={inside} onToggle={() => setInside((v) => !v)} />
+    <DistrictTags w={w} inside={inside} onJob={() => choose('work')} />
     <Panel label={`${w.name} dossier`} width="lg" rest={0.52}>
-      <Header w={w} />
-      <div className="sticky top-5 z-[6] border-y border-line bg-panel/95 backdrop-blur-md lg:top-0">
+      <Header w={w} onTrade={() => choose('trade')} />
+      <div className="sticky top-6 z-[6] border-y border-line bg-panel/95 backdrop-blur-md lg:top-0">
         <div role="tablist" aria-label="Sections" className="no-scrollbar flex gap-1 overflow-x-auto px-3 lg:px-4">
           {tabs.map((t) => (
             <button
@@ -97,6 +115,7 @@ function Dossier({ w }: { w: World }) {
           transition={{ duration: 0.22, ease: EASE_OUT }}
         >
           {tab === 'overview' && <Overview w={w} go={choose} />}
+          {tab === 'trade' && <TradeTab w={w} />}
           {tab === 'log' && <GovernorLog w={w} />}
           {tab === 'charter' && <CharterTab w={w} />}
           {tab === 'treasury' && <TreasuryTab w={w} />}
@@ -105,10 +124,12 @@ function Dossier({ w }: { w: World }) {
         </m.div>
       </AnimatePresence>
     </Panel>
+    </>
   )
 }
 
-function Header({ w }: { w: World }) {
+function Header({ w, onTrade }: { w: World; onTrade: () => void }) {
+  const live = usePrice(w.id)
   const nav = useNavigate()
   const now = useNow()
   const p = preset(w.template)
@@ -139,9 +160,14 @@ function Header({ w }: { w: World }) {
             {w.mine && <span className="rounded-full bg-sprout px-2 py-0.5 text-[11px] font-semibold text-on-sprout">You seeded this</span>}
           </div>
         </div>
-        <div className="shrink-0 text-right">
-          <p className="font-mono text-[15px] font-medium tabular">{price(w.priceUsd)}</p>
-          <Delta value={w.change24h} />
+        <div className="flex shrink-0 flex-col items-end">
+          <p className="font-mono text-[15px] font-medium tabular">
+            <Ticking value={Math.round(live * 1e7)} text={price(live)} />
+          </p>
+          <Delta value={(1 + w.change24h) * (live / w.priceUsd) - 1} />
+          <button onClick={onTrade} className={buttonClass('primary', 'sm', 'mt-2 h-7 px-3')}>
+            Trade
+          </button>
         </div>
       </div>
       <p className="mt-4 text-[15px] text-ink-2">{w.lore}</p>

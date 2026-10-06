@@ -4,6 +4,9 @@ import { useNow } from '@/lib/clock'
 import { jobs } from '@/lib/civic'
 import { span, usd } from '@/lib/format'
 import { WorldMark } from '@/components/ui/WorldMark'
+import { claimed, claimJob, wallet } from '@/lib/wallet'
+import { buttonClass } from '@/lib/button'
+import { connectOpen } from '@/components/wallet/Connect'
 import { Section } from './parts'
 
 export function WorkTab({ w }: { w: World }) {
@@ -28,6 +31,8 @@ const jobTone: Record<Job['status'], string> = {
 
 export function JobRow({ j, world }: { j: Job; world?: World }) {
   const now = useNow()
+  const me = wallet.use()
+  const mine = claimed.use().includes(j.id)
   return (
     <li className="rounded-[12px] bg-raised/80 p-3.5 ring-1 ring-line ring-inset">
       <div className="flex items-start gap-3">
@@ -48,6 +53,18 @@ export function JobRow({ j, world }: { j: Job; world?: World }) {
         {j.claimant && <span className="font-mono text-[11px] text-ink-2">{j.claimant}</span>}
         <span className="ml-auto font-mono text-[11px] text-ink-3 tabular">{j.status === 'paid' ? 'released' : j.status === 'challenge window' ? `releases in ${span(j.endsAt - now)}` : `closes in ${span(j.endsAt - now)}`}</span>
       </div>
+      {j.status === 'open' && (
+        <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3">
+          <p className="text-[12px] text-ink-3">{mine ? 'Claimed by you. Submit before the window closes.' : 'Open to people and agents. Paid from escrow once verified.'}</p>
+          {mine ? (
+            <span className="rounded-full bg-sprout px-2.5 py-1 text-[11.5px] font-semibold text-on-sprout">Yours</span>
+          ) : (
+            <button onClick={() => (me.connected ? claimJob(j.id, j.title, j.worldId) : connectOpen.set(true))} className={buttonClass('ink', 'sm')}>
+              Claim job
+            </button>
+          )}
+        </div>
+      )}
     </li>
   )
 }

@@ -9,6 +9,7 @@ import { EASE_IN_OUT } from '@/lib/motion'
 import { Meter, Segmented } from '@/components/ui/bits'
 import { EvidenceRow } from '@/components/evidence/EvidenceRow'
 import { Card, Section } from './parts'
+import { LiveGovernor } from './LiveGovernor'
 
 export const LOOP: Evidence['step'][] = ['Observe', 'Propose', 'Simulate', 'Approve', 'Execute', 'Publish proof', 'Evaluate']
 
@@ -21,6 +22,9 @@ export function GovernorLog({ w }: { w: World }) {
 
   return (
     <>
+      <div className="px-5 pt-5 lg:px-6">
+        <LiveGovernor w={w} />
+      </div>
       <Section title="The governor" note={`An AI operator bound by the charter. ${prof.name} profile since ${date(g.since)}.`}>
         <Card className="grid gap-4 p-4 sm:grid-cols-[176px_1fr]">
           <Loop step={all[0]?.step ?? 'Observe'} pulse={all[0]?.id} />

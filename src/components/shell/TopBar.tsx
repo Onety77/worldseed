@@ -8,6 +8,13 @@ import { buttonClass } from '@/lib/button'
 import { EASE_OUT } from '@/lib/motion'
 import { Mark } from '@/components/ui/Logo'
 import { Legend } from './Legend'
+import { InboxButton } from './Inbox'
+import { searchOpen } from './Search'
+import { Search as SearchIcon, Wallet } from 'lucide-react'
+import { usePortfolio } from '@/lib/wallet'
+import { usd } from '@/lib/format'
+import { connectOpen } from '@/components/wallet/Connect'
+import { Identicon } from '@/pages/You'
 import { useCover } from '@/field/Field'
 
 /**
@@ -20,7 +27,7 @@ export function TopBar() {
   const box = useRef<HTMLDivElement>(null)
   useCover(box, 'top')
   const lens = lensFor(pathname)
-  const here = lens?.name ?? (pathname.startsWith('/w/') ? 'World' : pathname === '/seed' ? 'Seed a world' : pathname === '/how' ? 'How it works' : 'Atlas')
+  const here = lens?.name ?? (pathname.startsWith('/w/') ? 'World' : pathname === '/seed' ? 'Seed a world' : pathname === '/how' ? 'How it works' : pathname === '/you' ? 'You' : 'Atlas')
 
   // close on navigation, outside press and Escape
   const [seen, setSeen] = useState(pathname)
@@ -55,6 +62,10 @@ export function TopBar() {
           <span className="truncate">{here}</span>
           <ChevronDown className={cn('size-4 shrink-0 text-ink-3 transition-transform duration-300', open && 'rotate-180')} />
         </button>
+        <button onClick={() => searchOpen.set(true)} aria-label="Search" className="grid size-9 place-items-center rounded-[9px] text-ink-2 hover-device:hover:bg-hover">
+          <SearchIcon className="size-[18px]" strokeWidth={1.8} />
+        </button>
+        <InboxButton />
         <Link to="/seed" className={buttonClass('primary', 'sm', 'h-9 px-3')}>
           <Plus className="size-4" />
           Seed
@@ -84,6 +95,7 @@ export function TopBar() {
                   </li>
                 ))}
               </ul>
+              <YouRow />
               <div className="mt-1 border-t border-line px-2.5 pt-3 pb-1">
                 <Legend />
               </div>
@@ -95,5 +107,23 @@ export function TopBar() {
         </AnimatePresence>
       </div>
     </header>
+  )
+}
+
+function YouRow() {
+  const me = usePortfolio()
+  if (!me.connected)
+    return (
+      <button onClick={() => connectOpen.set(true)} className="mt-1 flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2.5 text-left hover-device:hover:bg-hover">
+        <Wallet className="size-[18px] text-ink-2" strokeWidth={1.8} />
+        <span className="text-[15px] font-semibold">Connect wallet</span>
+      </button>
+    )
+  return (
+    <NavLink to="/you" className={({ isActive }) => cn('mt-1 flex items-center gap-3 rounded-[10px] px-2.5 py-2', isActive ? 'bg-raised ring-1 ring-line' : 'hover-device:hover:bg-hover')}>
+      <Identicon address={me.address} className="size-7 rounded-[8px]" />
+      <span className="flex-1 text-[15px] font-semibold">You</span>
+      <span className="font-mono text-[12px] tabular">{usd(me.value + me.cashUsd)}</span>
+    </NavLink>
   )
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { CONTOUR, GLSL, INDEX_EVERY, MAX_HILLS, heightAt, type Hill } from './height'
 import { buildSettlement, disposeGroup, setOpacity } from './settlement'
+import { District, type Anchor, type DistrictInput } from './district'
 
 /*
   The Field: one WebGL scene that lives behind every page. A topographic landscape in ink
@@ -20,6 +21,7 @@ export interface FieldWorld {
 export type View =
   | { kind: 'atlas' }
   | { kind: 'world'; id: string }
+  | { kind: 'district'; id: string }
   | { kind: 'plot'; x: number; z: number }
   | { kind: 'coast' }
   | { kind: 'backdrop' }
@@ -42,7 +44,7 @@ const SPROUT = new THREE.Color('#c4ef3a')
 const GREEN = new THREE.Color('#3f6b00')
 const WATER = new THREE.Color('#cddadb')
 
-const terrainVS = /* glsl */ `
+const terrainVS = (hq: boolean) => /* glsl */ `
 ${GLSL}
 uniform vec4 uHill[${MAX_HILLS}];
 uniform vec4 uMeta[${MAX_HILLS}];
@@ -63,7 +65,7 @@ void main() {
   vec2 p = position.xz;
   float h = H(p);
   float e = .35;
-  vec3 n = normalize(vec3(H(p - vec2(e, 0.)) - H(p + vec2(e, 0.)), 2. * e, H(p - vec2(0., e)) - H(p + vec2(0., e))));
+  ${hq ? 'vec3 n = normalize(vec3(H(p - vec2(e, 0.)) - H(p + vec2(e, 0.)), 2. * e, H(p - vec2(0., e)) - H(p + vec2(0., e))));' : 'vec3 n = normalize(vec3(h - H(p + vec2(e, 0.)), e, h - H(p + vec2(0., e))));'}
   vH = h;
   vN = n;
   vP = p;
@@ -135,8 +137,8 @@ void main() {
     vec4 pg = uPing[i];
     if (pg.w <= 0.) continue;
     float d = length(vP - pg.xy);
-    float r = pg.z * 7.;
-    ring = max(ring, exp(-pow((d - r) / .4, 2.)) * pg.w * smoothstep(.08, .3, pg.z) * (1. - smoothstep(.4, 1.7, pg.z)));
+    float r = pg.z * 7. * pg.w;
+    ring = max(ring, exp(-pow((d - r) / (.4 * pg.w), 2.)) * smoothstep(.08, .3, pg.z) * (1. - smoothstep(.4, 1.7, pg.z)));
   }
 
   vec3 lineCol = mix(uInk, uGreen, max(green, ring));
@@ -199,7 +201,7 @@ export class FieldEngine {
   private shown = new Map<string, Hill & { green: number; muted: number }>()
   private focus: string | null = null
   private hover: string | null = null
-  private pings: { x: number; z: number; at: number }[] = []
+  private pings: { x: number; z: number; at: number; scale: number }[] = []
   private view: View = { kind: 'atlas' }
   private cam: Cam = { tx: 0, tz: 6, dist: 190, tilt: 0.95, az: 0.5 }
   private goal: Cam = { tx: 0, tz: 0, dist: 128, tilt: 0.86, az: 0.5 }
@@ -216,9 +218,19 @@ export class FieldEngine {
   private dragging = false
   private interacted = 0
   private reduced = false
+  private paused = false
+  private quality: 'high' | 'low'
+  /** the distance the current view frames at; zooming moves within a range of it */
+  private base = 128
+  /** momentum left over from a flick: ground units (or radians) per second */
+  private vel = { tx: 0, tz: 0, az: 0 }
+  private lastRender = 0
+  private district: { input: DistrictInput; d: District; shown: number } | null = null
 
   constructor(container: HTMLElement, quality: 'high' | 'low') {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+    this.quality = quality
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: quality === 'high' ? 'high-performance' : 'default' })
+    // phones have dense screens; 1.5x is sharp enough for ink lines and halves the pixel work of 3x
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality === 'high' ? 1.75 : 1.5))
     this.renderer.setClearColor(HAZE)
     this.canvas = this.renderer.domElement
@@ -233,13 +245,13 @@ export class FieldEngine {
       uWater: { value: WATER },
       uT: { value: 0 },
     }
-    const seg = quality === 'high' ? 360 : 200
+    const seg = quality === 'high' ? 360 : 180
     const geo = new THREE.PlaneGeometry(200, 200, seg, seg)
     geo.rotateX(-Math.PI / 2)
     this.terrain = new THREE.Mesh(
       geo,
       new THREE.ShaderMaterial({
-        vertexShader: terrainVS,
+        vertexShader: terrainVS(quality === 'high'),
         fragmentShader: terrainFS(quality === 'high'),
         uniforms: {
           ...common,
@@ -321,17 +333,83 @@ export class FieldEngine {
   }
 
   setView(v: View) {
+    const changed = JSON.stringify(v) !== JSON.stringify(this.view)
     this.view = v
     const room = this.room()
-    this.drift = v.kind === 'atlas' || v.kind === 'world' || v.kind === 'backdrop' || v.kind === 'coast'
-    const w = v.kind === 'world' ? this.worlds.find((x) => x.id === v.id) : null
+    this.drift = v.kind !== 'plot'
+    const w = v.kind === 'world' || v.kind === 'district' ? this.worlds.find((x) => x.id === v.id) : null
     const narrow = this.size.w < 700
-    if (v.kind === 'atlas') this.goal = { ...this.goal, tx: 0, tz: 2, dist: narrow ? 112 * Math.min(room, 1.3) : 118 * room, tilt: 0.86 }
+    if (v.kind === 'atlas') this.goal = { ...this.goal, tx: 0, tz: 2, dist: narrow ? 112 * Math.min(room, 1.45) : 118 * room, tilt: 0.86 }
     else if (v.kind === 'coast') this.goal = { ...this.goal, tx: 0, tz: 0, dist: narrow ? 120 * Math.min(room, 1.3) : 128 * room, tilt: 1.02 }
     else if (v.kind === 'backdrop') this.goal = { ...this.goal, tx: 0, tz: 0, dist: 150, tilt: 0.7 }
     else if (v.kind === 'plot') this.goal = { ...this.goal, tx: v.x, tz: v.z, dist: (narrow ? 56 : 44) * room, tilt: 0.8 }
+    else if (w && v.kind === 'district') this.goal = { ...this.goal, tx: w.hill.x, tz: w.hill.z, dist: (narrow ? 30 + w.hill.radius * 2.5 : (14 + w.hill.radius * 1.9) * Math.sqrt(room)), tilt: 1.02 }
     else if (w) this.goal = { ...this.goal, tx: w.hill.x, tz: w.hill.z, dist: ((narrow ? 40 : 28) + w.hill.radius * 2.6) * Math.sqrt(room), tilt: 0.92 }
+    this.base = this.goal.dist
+    if (changed) this.vel = { tx: 0, tz: 0, az: 0 }
     this.wake()
+  }
+
+  /** what stands inside a world, for when you step into it; null clears it */
+  setDistrict(input: DistrictInput | null) {
+    const same = this.district && input && JSON.stringify(this.district.input) === JSON.stringify(input)
+    if (same) return
+    if (this.district) {
+      this.towns.remove(this.district.d.group)
+      this.district.d.dispose()
+      this.district = null
+    }
+    const w = input && this.worlds.find((x) => x.id === input.id)
+    if (input && w) {
+      const d = new District(input, w.hill, this.worlds.map((x) => x.hill))
+      d.setOpacity(0)
+      this.towns.add(d.group)
+      this.district = { input, d, shown: 0 }
+    }
+    this.wake()
+  }
+
+  /** where the buildings and sites of the open district are, for labels */
+  districtAnchors(): Anchor[] {
+    return this.district?.d.anchors ?? []
+  }
+
+  // ── controls, for buttons and keys ──
+
+  zoomBy(f: number) {
+    this.interacted = performance.now()
+    this.zoom(f)
+  }
+
+  /** turn the Field by an angle (radians) */
+  turn(a: number) {
+    this.interacted = performance.now()
+    this.goal.az += a
+    this.wake()
+  }
+
+  /** back to how the current view frames things, facing the usual way */
+  recenter() {
+    this.vel = { tx: 0, tz: 0, az: 0 }
+    this.goal.az = Math.round((this.goal.az - 0.5) / (Math.PI * 2)) * Math.PI * 2 + 0.5
+    this.setView(this.view)
+  }
+
+  /** stop drawing while the Field is fully covered (a sheet pulled all the way up) */
+  setPaused(on: boolean) {
+    if (this.paused === on) return
+    this.paused = on
+    if (!on) this.wake()
+  }
+
+  /** which way the camera faces, in radians; 0.5 is the usual heading */
+  heading() {
+    return this.cam.az
+  }
+
+  /** a point on screen for any spot in the Field */
+  projectPoint(x: number, y: number, z: number) {
+    return this.project(x, y, z)
   }
 
   setFocus(id: string | null) {
@@ -365,7 +443,9 @@ export class FieldEngine {
   ping(id: string) {
     const w = this.worlds.find((x) => x.id === id)
     if (!w) return
-    this.pings = [...this.pings.slice(-7), { x: w.hill.x, z: w.hill.z, at: performance.now() }]
+    const inside = this.district && this.view.kind === 'district' && this.view.id === id
+    const at = inside ? this.district!.d.pingSpot() : { x: w.hill.x, z: w.hill.z }
+    this.pings = [...this.pings.slice(-7), { ...at, at: performance.now(), scale: inside ? 0.32 : 1 }]
     this.wake()
   }
 
@@ -385,7 +465,7 @@ export class FieldEngine {
     const py = clientY - rect.top
     let best: { id: string; d: number } | null = null
     for (const w of this.worlds) {
-      if (w.muted) continue
+      if (w.muted || (this.view.kind === 'district' && this.view.id === w.id)) continue
       const s = this.shown.get(w.id)!
       const top = this.project(w.hill.x, s.height * 0.6 + 0.5, w.hill.z)
       const edge = this.project(w.hill.x + w.hill.radius * 0.8, 0.5, w.hill.z)
@@ -410,7 +490,7 @@ export class FieldEngine {
   }
 
   wake() {
-    if (!this.raf) this.raf = requestAnimationFrame(this.frame)
+    if (!this.raf && !this.paused) this.raf = requestAnimationFrame(this.frame)
   }
 
   dispose() {
@@ -420,6 +500,7 @@ export class FieldEngine {
     this.water.geometry.dispose()
     this.water.material.dispose()
     this.settlements.forEach((st) => disposeGroup(st.group))
+    this.district?.d.dispose()
     this.renderer.dispose()
     this.canvas.remove()
   }
@@ -466,15 +547,35 @@ export class FieldEngine {
     this.last = now
     let moving = false
 
+    // a flick keeps going for a moment, then settles
+    const v = this.vel
+    if (!this.dragging && (Math.abs(v.tx) + Math.abs(v.tz) > 0.05 || Math.abs(v.az) > 0.002)) {
+      this.goal.tx = Math.max(-60, Math.min(60, this.goal.tx + v.tx * dt))
+      this.goal.tz = Math.max(-60, Math.min(60, this.goal.tz + v.tz * dt))
+      this.goal.az += v.az * dt
+      const decay = Math.pow(0.02, dt)
+      v.tx *= decay
+      v.tz *= decay
+      v.az *= decay
+      this.interacted = now
+      moving = true
+    }
+
     // camera eases toward its goal; when idle it drifts slowly round
-    if (this.drift && !this.reduced && !this.dragging && now - this.interacted > 2500) this.goal.az += dt * (this.view.kind === 'world' ? 0.05 : 0.018)
-    const k = 1 - Math.pow(0.0015, dt)
+    const idle = !this.dragging && now - this.interacted > 2500
+    if (this.drift && !this.reduced && idle) this.goal.az += dt * (this.view.kind === 'world' ? 0.05 : this.view.kind === 'district' ? 0.025 : 0.018)
+    // follow fingers closely; travel between views more gently
+    const k = 1 - Math.pow(this.dragging ? 0.000002 : 0.0015, dt)
+    let easing = false
     for (const key of ['tx', 'tz', 'dist', 'tilt', 'az'] as const) {
       const next = this.reduced ? this.goal[key] : lerp(this.cam[key], this.goal[key], k)
-      if (Math.abs(next - this.goal[key]) > 0.002) moving = true
+      if (Math.abs(next - this.goal[key]) > 0.002) easing = true
       this.cam[key] = next
     }
-    if (this.drift && !this.reduced) moving = true
+    if (easing) moving = true
+    // only the slow idle drift is moving: on modest devices, draw it at half rate
+    const driftOnly = this.drift && !this.reduced && !easing && idle
+    if (driftOnly) moving = true
 
     // hills ease toward their targets: growth, terraces, the moat, focus and filters
     const g = 1 - Math.pow(0.12, dt)
@@ -505,18 +606,35 @@ export class FieldEngine {
       const s = this.shown.get(w.id)!
       if (!st) continue
       const grown = Math.min(1, Math.max(0, (s.height / Math.max(w.hill.height, 0.01) - 0.9) / 0.1))
-      setOpacity(st.group, grown * (1 - s.muted * 0.75))
+      const replaced = this.district?.input.id === w.id ? this.district.shown : 0
+      setOpacity(st.group, grown * (1 - s.muted * 0.75) * (1 - replaced))
+    }
+    // inside a world: its district fades in over the plain settlement, and its agents walk
+    if (this.district) {
+      const want = this.view.kind === 'district' && this.view.id === this.district.input.id ? 1 : 0
+      const dd = this.district
+      const next = this.reduced ? want : lerp(dd.shown, want, 1 - Math.pow(0.02, dt))
+      if (Math.abs(next - want) > 0.004) moving = true
+      dd.shown = Math.abs(next - want) < 0.004 ? want : next
+      dd.d.setOpacity(dd.shown)
+      if (dd.shown > 0 && !this.reduced && dd.d.step(dt)) moving = true
     }
 
     this.pings = this.pings.filter((p) => now - p.at < 2400)
     for (let i = 0; i < 8; i++) {
       const p = this.pings[i]
-      if (p) u.uPing.value[i].set(p.x, p.z, (now - p.at) / 1000, 1)
+      if (p) u.uPing.value[i].set(p.x, p.z, (now - p.at) / 1000, p.scale)
       else u.uPing.value[i].set(0, 0, 0, 0)
     }
     if (this.pings.length) moving = true
     this.water.material.uniforms.uT.value = (now - this.t0) / 1000
     u.uT.value = this.water.material.uniforms.uT.value
+
+    if (driftOnly && this.quality === 'low' && !this.pings.length && now - this.lastRender < 30) {
+      if (!document.hidden) this.wake()
+      return
+    }
+    this.lastRender = now
 
     // camera
     const c = this.cam
@@ -576,20 +694,59 @@ export class FieldEngine {
     })
   }
 
+  /** where a point on screen meets the ground, roughly (a plane just above sea level) */
+  private ground(clientX: number, clientY: number) {
+    const rect = this.canvas.getBoundingClientRect()
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1)
+    const ray = new THREE.Raycaster()
+    ray.setFromCamera(ndc, this.camera)
+    const hit = new THREE.Vector3()
+    return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.5), hit) ? hit : null
+  }
+
+  /** ground units moved for a screen drag, in the camera's frame */
+  private panBy(dx: number, dy: number) {
+    // ground units per pixel at the target: the view's height there, over the screen's height
+    const s = (this.cam.dist * 2 * Math.tan((this.camera.fov * Math.PI) / 360)) / this.size.h
+    const ca = Math.cos(this.goal.az), sa = Math.sin(this.goal.az)
+    const mx = -(dx * ca - dy * sa * 1.4) * s
+    const mz = -(-dx * sa - dy * ca * 1.4) * s
+    this.goal.tx = Math.max(-60, Math.min(60, this.goal.tx + mx))
+    this.goal.tz = Math.max(-60, Math.min(60, this.goal.tz + mz))
+    return { mx, mz }
+  }
+
   private bindInput() {
     const el = this.canvas
     const pointers = new Map<number, { x: number; y: number }>()
-    let pinch = 0
+    let two: { d: number; a: number; cx: number; cy: number } | null = null
     let travel = 0
-    let downAt = { x: 0, y: 0 }
+    let downAt = { x: 0, y: 0, t: 0 }
+    let lastTap = { x: 0, y: 0, t: 0 }
+    // recent movement, for the flick that follows a drag
+    let trail: { t: number; tx: number; tz: number; az: number }[] = []
+    const free = () => this.view.kind === 'atlas' || this.view.kind === 'coast'
+
+    const pairState = () => {
+      const [a, b] = [...pointers.values()]
+      return { d: Math.hypot(a.x - b.x, a.y - b.y), a: Math.atan2(b.y - a.y, b.x - a.x), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 }
+    }
+
     el.addEventListener('pointerdown', (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
       el.setPointerCapture(e.pointerId)
       this.dragging = true
       this.interacted = performance.now()
-      travel = 0
-      downAt = { x: e.clientX, y: e.clientY }
+      this.vel = { tx: 0, tz: 0, az: 0 }
+      trail = []
+      if (pointers.size === 1) {
+        travel = 0
+        downAt = { x: e.clientX, y: e.clientY, t: performance.now() }
+      }
+      two = pointers.size === 2 ? pairState() : null
+      this.wake()
     })
+
     el.addEventListener('pointermove', (e) => {
       const prev = pointers.get(e.pointerId)
       if (!prev) {
@@ -598,51 +755,83 @@ export class FieldEngine {
       }
       const dx = e.clientX - prev.x
       const dy = e.clientY - prev.y
-      travel = Math.max(travel, Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y))
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
-      const free = this.view.kind === 'atlas' || this.view.kind === 'coast'
-      if (pointers.size === 2 && free) {
-        const [a, b] = [...pointers.values()]
-        const d = Math.hypot(a.x - b.x, a.y - b.y)
-        if (pinch) this.zoom(pinch / d)
-        pinch = d
-        return
+      travel = Math.max(travel, Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y))
+      const now = performance.now()
+
+      if (pointers.size === 2) {
+        // two fingers: pinch to zoom, twist to turn, move together to pan
+        const s2 = pairState()
+        if (two) {
+          this.zoom(two.d / Math.max(1, s2.d))
+          let da = s2.a - two.a
+          if (da > Math.PI) da -= Math.PI * 2
+          if (da < -Math.PI) da += Math.PI * 2
+          this.goal.az -= da
+          if (free()) this.panBy(s2.cx - two.cx, s2.cy - two.cy)
+          else this.goal.tilt = Math.min(1.2, Math.max(0.5, this.goal.tilt - (s2.cy - two.cy) * 0.004))
+        }
+        two = s2
+        travel = 99
+      } else if (pointers.size === 1) {
+        if (!free() || e.shiftKey || e.buttons === 2) {
+          // turn around the centre (around the world, when one is open)
+          this.goal.az -= dx * 0.006
+          this.goal.tilt = Math.min(1.2, Math.max(0.5, this.goal.tilt - dy * 0.003))
+        } else this.panBy(dx, dy)
       }
-      if (!free || e.shiftKey || e.buttons === 2) {
-        // turn the Field around its centre (around the world, when one is open)
-        this.goal.az -= dx * 0.005
-        this.goal.tilt = Math.min(1.2, Math.max(0.5, this.goal.tilt - dy * 0.003))
-      } else {
-        // pan across the ground, in the camera's frame
-        const s = this.goal.dist / this.size.h
-        const ca = Math.cos(this.goal.az), sa = Math.sin(this.goal.az)
-        this.goal.tx = Math.max(-60, Math.min(60, this.goal.tx - (dx * ca - dy * sa * 1.4) * s))
-        this.goal.tz = Math.max(-60, Math.min(60, this.goal.tz - (-dx * sa - dy * ca * 1.4) * s))
-      }
-      this.interacted = performance.now()
+      trail.push({ t: now, tx: this.goal.tx, tz: this.goal.tz, az: this.goal.az })
+      trail = trail.filter((p) => now - p.t < 120)
+      this.interacted = now
       this.wake()
     })
+
     const up = (e: PointerEvent) => {
       const was = pointers.has(e.pointerId)
       pointers.delete(e.pointerId)
-      if (pointers.size < 2) pinch = 0
-      if (!pointers.size) this.dragging = false
-      // a tap, not a drag: open the world under it
-      if (was && e.type === 'pointerup' && travel < 6) {
+      if (pointers.size === 2) two = pairState()
+      else two = null
+      if (pointers.size) return
+      this.dragging = false
+      if (!was || e.type !== 'pointerup') return
+      const now = performance.now()
+
+      if (travel < 8 && now - downAt.t < 450) {
+        // a tap: open the world under it; a second tap on open ground zooms in there
         const id = this.pick(e.clientX, e.clientY)
         if (id) this.selectListeners.forEach((f) => f(id))
+        else if (now - lastTap.t < 320 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30 && free()) {
+          const g = this.ground(e.clientX, e.clientY)
+          if (g) {
+            this.goal.tx = Math.max(-60, Math.min(60, this.goal.tx + (g.x - this.goal.tx) * 0.5))
+            this.goal.tz = Math.max(-60, Math.min(60, this.goal.tz + (g.z - this.goal.tz) * 0.5))
+          }
+          this.zoomBy(0.6)
+        }
+        lastTap = { x: e.clientX, y: e.clientY, t: now }
+        return
       }
+
+      // a flick: carry on in the same direction
+      if (!this.reduced && trail.length > 1) {
+        const a = trail[0], b = trail[trail.length - 1]
+        const span = Math.max(16, b.t - a.t) / 1000
+        this.vel = { tx: ((b.tx - a.tx) / span) * 0.9, tz: ((b.tz - a.tz) / span) * 0.9, az: ((b.az - a.az) / span) * 0.9 }
+        if (now - b.t > 80) this.vel = { tx: 0, tz: 0, az: 0 }
+      }
+      this.wake()
     }
     el.addEventListener('pointerup', up)
     el.addEventListener('pointercancel', up)
-    el.addEventListener('pointerleave', () => this.setHover(null))
+    el.addEventListener('pointerleave', (e) => e.pointerType === 'mouse' && this.setHover(null))
     el.addEventListener('contextmenu', (e) => e.preventDefault())
     el.addEventListener(
       'wheel',
       (e) => {
-        if (this.view.kind !== 'atlas' && this.view.kind !== 'coast') return
+        if (this.view.kind === 'backdrop') return
         e.preventDefault()
-        this.zoom(Math.exp(e.deltaY * 0.0012))
+        // trackpad pinch arrives as ctrl+wheel with small deltas
+        this.zoom(Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0012)))
         this.interacted = performance.now()
       },
       { passive: false },
@@ -650,7 +839,11 @@ export class FieldEngine {
   }
 
   private zoom(f: number) {
-    this.goal.dist = Math.min(240, Math.max(34, this.goal.dist * f))
+    // the atlas zooms freely; a world's view zooms within reach of its framing
+    const atlas = this.view.kind === 'atlas' || this.view.kind === 'coast'
+    const lo = atlas ? 30 : this.base * 0.45
+    const hi = atlas ? 240 : this.base * 1.8
+    this.goal.dist = Math.min(hi, Math.max(lo, this.goal.dist * f))
     this.wake()
   }
 }

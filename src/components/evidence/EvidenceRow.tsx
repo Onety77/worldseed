@@ -8,6 +8,9 @@ import { ago, hash, usd } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
 import { EASE_OUT } from '@/lib/motion'
 import { fileChallenge, filed } from '@/lib/civic'
+import { wallet } from '@/lib/wallet'
+import { notify } from '@/lib/inbox'
+import { connectOpen } from '@/components/wallet/Connect'
 import { VerdictTag } from '@/components/ui/bits'
 import { WorldMark } from '@/components/ui/WorldMark'
 
@@ -115,11 +118,12 @@ function Challenge({ e }: { e: Evidence }) {
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState(reasons[0])
   const bond = Math.max(250, Math.round((e.costUsd * 40) / 50) * 50)
+  const me = wallet.use()
   if (!open) {
     return (
       <div className="mt-3 flex items-center justify-between gap-3">
         <p className="text-[12.5px] text-ink-3">Think this proof is wrong? Anyone can challenge it with a bond.</p>
-        <button onClick={() => setOpen(true)} className={buttonClass('danger', 'sm')}>
+        <button onClick={() => (me.connected ? setOpen(true) : connectOpen.set(true))} className={buttonClass('danger', 'sm')}>
           Challenge
         </button>
       </div>
@@ -131,6 +135,7 @@ function Challenge({ e }: { e: Evidence }) {
       onSubmit={(ev) => {
         ev.preventDefault()
         fileChallenge({ worldId: e.worldId, evidenceId: e.id, bondUsd: bond, claim: reason })
+        notify({ kind: 'challenge', title: 'Challenge filed', body: `Bond of $${bond} posted against “${e.title}”. A verifier panel rules within 72 hours.`, worldId: e.worldId, href: `/w/${e.worldId}#governance` })
       }}
     >
       <fieldset>

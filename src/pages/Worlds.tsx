@@ -21,6 +21,7 @@ import { StageFilter } from '@/components/shell/StageFilter'
 import { WorldMark } from '@/components/ui/WorldMark'
 import { Delta, Meter, Segmented, StageTag, Ticks } from '@/components/ui/bits'
 import { CountUp } from '@/components/motion/CountUp'
+import { usePrice } from '@/lib/market'
 
 type Sort = 'ready' | 'treasury' | 'new'
 
@@ -230,8 +231,7 @@ function WorldRow({ world: w }: { world: World }) {
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <p className="font-mono text-[12.5px] tabular">{price(w.priceUsd)}</p>
-          <Delta value={w.change24h} />
+          <LivePrice w={w} />
         </div>
       </Link>
     </li>
@@ -284,12 +284,28 @@ function Ledger({ worlds }: { worlds: World[] }) {
               </td>
               <td className="text-right font-mono tabular">{w.holders >= 10_000 ? num(w.holders) : count(w.holders)}</td>
               <td className="text-right">
-                <span className="font-mono tabular">{price(w.priceUsd)}</span> <Delta value={w.change24h} />
+                <LivePrice w={w} inline />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  )
+}
+
+/** A token's live price and its move over 24 hours. */
+function LivePrice({ w, inline = false }: { w: World; inline?: boolean }) {
+  const p = usePrice(w.id) || w.priceUsd
+  const d = (1 + w.change24h) * (p / w.priceUsd) - 1
+  return inline ? (
+    <>
+      <span className="font-mono tabular">{price(p)}</span> <Delta value={d} />
+    </>
+  ) : (
+    <>
+      <p className="font-mono text-[12.5px] tabular">{price(p)}</p>
+      <Delta value={d} />
+    </>
   )
 }

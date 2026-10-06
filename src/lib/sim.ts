@@ -106,6 +106,13 @@ export const usePings = () => use((s) => s.pings)
 export const useGraduations = () => use((s) => s.graduated)
 export const getState = () => state
 
+/** A governor finished a loop: its proof lands in the log and pings the Field. */
+export function publishProof(worldId: string, title: string, model: string, kind: Evidence['kind'] = 'deploy') {
+  const now = Date.now()
+  const e: Evidence = { id: `${worldId}-live-${now}`, worldId, at: now, kind, title, model, costUsd: Math.round((0.2 + Math.random() * 3) * 100) / 100, ref: hex(rand, 64), verdict: 'pending', step: 'Publish proof' }
+  set({ ...state, evidence: [e, ...state.evidence].slice(0, 400), pings: [...state.pings.filter((p) => now - p.at < 6000), { id: e.id, worldId, at: now }] })
+}
+
 export function plant(w: World) {
   const now = Date.now()
   const first: Evidence = {

@@ -22,6 +22,14 @@ export const fieldFilter = createStore<Stage | 'all'>('all')
 type Side = 'left' | 'right' | 'top' | 'bottom'
 const covers = createStore<Record<string, { side: Side; px: number }>>({})
 
+/** How much of each screen edge panels cover right now. */
+export function useInsets() {
+  const cover = covers.use()
+  const i = { left: 0, right: 0, top: 0, bottom: 0 }
+  for (const c of Object.values(cover)) i[c.side] = Math.max(i[c.side], c.px)
+  return i
+}
+
 /** Report how much of the screen an element covers from one side, while it is mounted. */
 export function useCover(ref: RefObject<HTMLElement | null>, side: Side, on = true) {
   useEffect(() => {

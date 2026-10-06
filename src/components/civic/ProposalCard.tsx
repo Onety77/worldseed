@@ -8,6 +8,9 @@ import { pct, span } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
 import { EASE_OUT } from '@/lib/motion'
 import { WorldMark } from '@/components/ui/WorldMark'
+import { wallet } from '@/lib/wallet'
+import { notify } from '@/lib/inbox'
+import { connectOpen } from '@/components/wallet/Connect'
 
 /** A holder vote: what it changes, the tally, and when it can execute. */
 export function ProposalCard({ p, world }: { p: Proposal; world?: World }) {
@@ -15,7 +18,12 @@ export function ProposalCard({ p, world }: { p: Proposal; world?: World }) {
   const mine = votes.use()[p.id]
   const total = p.forPct + p.againstPct
   const forShare = p.forPct / total
-  const vote = (v: 'for' | 'against') => votes.set((x) => ({ ...x, [p.id]: v }))
+  const me = wallet.use()
+  const vote = (v: 'for' | 'against') => {
+    if (!me.connected) return connectOpen.set(true)
+    votes.set((x) => ({ ...x, [p.id]: v }))
+    notify({ kind: 'vote', title: `You voted ${v}`, body: p.title, worldId: p.worldId, href: `/w/${p.worldId}#governance` })
+  }
 
   return (
     <li className="rounded-[12px] bg-raised/80 p-3.5 ring-1 ring-line ring-inset">

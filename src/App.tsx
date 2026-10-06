@@ -10,6 +10,7 @@ import { WorldPage } from '@/pages/World'
 import { SeedPage } from '@/pages/Seed'
 import { HowPage } from '@/pages/How'
 import { NotFound } from '@/pages/NotFound'
+import { YouPage } from '@/pages/You'
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
               <Route path="w/:id" element={<WorldPage />} />
               <Route path="seed" element={<SeedPage />} />
               <Route path="how" element={<HowPage />} />
+              <Route path="you" element={<YouPage />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

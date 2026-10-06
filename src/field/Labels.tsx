@@ -18,7 +18,7 @@ export interface LabelDetail {
   tone?: 'green' | 'red'
 }
 
-export function Labels({ worlds, focus, detail, dim = false }: { worlds: World[]; focus?: string | null; detail?: (w: World) => LabelDetail | null; dim?: boolean }) {
+export function Labels({ worlds, focus, detail, dim = false, hide = null }: { worlds: World[]; focus?: string | null; detail?: (w: World) => LabelDetail | null; dim?: boolean; hide?: string | null }) {
   const engine = useField()
   const refs = useRef(new Map<string, HTMLElement>())
   const sizes = useRef(new Map<string, { w: number; h: number }>())
@@ -35,7 +35,7 @@ export function Labels({ worlds, focus, detail, dim = false }: { worlds: World[]
       for (const p of sorted) {
         const el = refs.current.get(p.id)
         if (!el) continue
-        if (!p.visible) {
+        if (!p.visible || p.id === hide) {
           el.style.opacity = '0'
           el.style.visibility = 'hidden'
           continue
@@ -72,7 +72,7 @@ export function Labels({ worlds, focus, detail, dim = false }: { worlds: World[]
       off()
       offHover()
     }
-  }, [engine, focus])
+  }, [engine, focus, hide])
 
   // remeasure when the tags' contents change, and place new ones straight away
   useEffect(() => {

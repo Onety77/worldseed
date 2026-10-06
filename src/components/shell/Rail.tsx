@@ -7,13 +7,19 @@ import { lenses } from '@/lib/lenses'
 import { useEvidence, useWorlds } from '@/lib/sim'
 import { useChallenges, useProposals, openJobs } from '@/lib/civic'
 import { useNow } from '@/lib/clock'
-import { ago } from '@/lib/format'
+import { ago, usd } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
 import { EASE_OUT } from '@/lib/motion'
 import { useCover } from '@/field/Field'
 import { Mark, Wordmark } from '@/components/ui/Logo'
 import { StageFilter } from './StageFilter'
 import { Legend } from './Legend'
+import { InboxButton } from './Inbox'
+import { searchOpen } from './Search'
+import { Search as SearchIcon, Wallet } from 'lucide-react'
+import { usePortfolio } from '@/lib/wallet'
+import { connectOpen } from '@/components/wallet/Connect'
+import { Identicon } from '@/pages/You'
 
 /**
  * The survey instrument on the left of wide screens: who we are, the one thing to do
@@ -39,13 +45,23 @@ export function Rail() {
   return (
     <nav ref={ref} aria-label="Main" className="sheet fixed top-3 bottom-3 left-3 z-10 flex w-[264px] flex-col rounded-card">
       <div className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <Link to="/" className="flex items-center gap-2.5 px-5 pt-5 pb-1" aria-label="WORLDSEED, the Atlas">
-          <Mark className="size-7" />
-          <Wordmark />
-        </Link>
-        <p className="px-5 text-[12.5px] text-ink-3">Launch a token. Grow a world.</p>
+        <div className="flex items-center justify-between pt-4 pr-3 pl-5">
+          <Link to="/" className="flex items-center gap-2.5" aria-label="WORLDSEED, the Atlas">
+            <Mark className="size-7" />
+            <Wordmark />
+          </Link>
+          <InboxButton />
+        </div>
 
-        <div className="px-4 pt-5">
+        <div className="px-4 pt-4">
+          <button onClick={() => searchOpen.set(true)} className="flex h-9 w-full items-center gap-2 rounded-control bg-ink/[0.04] px-3 text-left text-[13px] text-ink-3 ring-1 ring-line ring-inset hover-device:hover:bg-ink/[0.06]">
+            <SearchIcon className="size-3.5" />
+            <span className="flex-1">Search</span>
+            <kbd className="rounded-[5px] bg-raised px-1.5 py-0.5 font-mono text-[10.5px] ring-1 ring-line">⌘K</kbd>
+          </button>
+        </div>
+
+        <div className="px-4 pt-2.5">
           <Link to="/seed" className={buttonClass('primary', 'md', 'w-full justify-between')}>
             Seed a world
             <Plus className="size-4" />
@@ -79,6 +95,10 @@ export function Rail() {
               </li>
             ))}
           </ul>
+        </div>
+
+        <div className="mt-2 px-3">
+          <YouLink />
         </div>
 
         <AnimatePresence initial={false}>
@@ -124,5 +144,27 @@ function LastProof() {
         <span className="font-semibold text-ink">{w.name}</span> · {e.title}
       </p>
     </Link>
+  )
+}
+
+/** You: your wallet, at a glance. Opens the connect sheet when there isn't one. */
+function YouLink() {
+  const me = usePortfolio()
+  if (!me.connected)
+    return (
+      <button onClick={() => connectOpen.set(true)} className="flex h-10 w-full items-center gap-2.5 rounded-[9px] px-2 text-[14px] font-medium text-ink-2 ring-1 ring-line ring-inset hover-device:hover:bg-hover hover-device:hover:text-ink">
+        <Wallet className="size-4 text-ink-3" strokeWidth={1.8} />
+        <span className="flex-1 text-left">Connect wallet</span>
+      </button>
+    )
+  return (
+    <NavLink to="/you" className={({ isActive }) => cn('flex h-11 items-center gap-2.5 rounded-[9px] px-2 transition-colors', isActive ? 'bg-raised shadow-[0_0_0_1px_var(--line)]' : 'hover-device:hover:bg-hover')}>
+      <Identicon address={me.address} className="size-7 rounded-[8px]" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13.5px] font-semibold">You</span>
+        <span className="block truncate font-mono text-[10.5px] text-ink-3">{me.address.slice(0, 6)}…{me.address.slice(-4)}</span>
+      </span>
+      <span className="font-mono text-[11.5px] tabular">{usd(me.value + me.cashUsd)}</span>
+    </NavLink>
   )
 }
