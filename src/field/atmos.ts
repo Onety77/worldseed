@@ -75,6 +75,14 @@ export class Atmos {
   private chimneys: { x: number; y: number; z: number }[] = []
   private time = { value: 0 }
   private m = new THREE.Matrix4()
+  // storms over worlds in trouble: a dark cloud and falling rain
+  private storms: { mesh: THREE.Mesh; x: number; z: number; y: number; k: number; goal: number }[] = []
+  private stormGeo = blobGeo(911)
+  private rain: THREE.InstancedMesh
+  private drops: { s: number; x: number; z: number; t: number }[] = []
+  // sparks: proofs rise green from a summit; a chain earned sets off fireworks
+  private sparks: THREE.InstancedMesh
+  private sparkList: { x: number; y: number; z: number; vx: number; vy: number; vz: number; t: number; life: number; c: THREE.Color }[] = []
 
   constructor(budget: 'high' | 'low') {
     const r = rand(2207)
@@ -121,6 +129,60 @@ export class Atmos {
     this.smoke = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.16, 0), smokeMat, budget === 'high' ? 90 : 40)
     this.smoke.frustumCulled = false
     this.group.add(this.smoke)
+    // rain
+    const rainMat = new THREE.MeshBasicMaterial({ color: '#c9d6de', transparent: true, opacity: 0.55, depthWrite: false })
+    this.rain = new THREE.InstancedMesh(new THREE.BoxGeometry(0.02, 0.5, 0.02), rainMat, 160)
+    this.rain.frustumCulled = false
+    this.group.add(this.rain)
+    // sparks glow by themselves, day or night
+    const sparkMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, depthWrite: false, toneMapped: false })
+    this.sparks = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.12, 0), sparkMat, 220)
+    this.sparks.frustumCulled = false
+    this.sparks.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(220 * 3), 3)
+    this.group.add(this.sparks)
+  }
+
+  /** worlds in trouble get a storm: k from 0 (none) to 1 (a missed milestone) */
+  setStorms(list: { id: string; x: number; z: number; r: number; k: number }[]) {
+    const want = list.filter((s) => s.k > 0.5)
+    // keep existing clouds where they are; fade out the ones no longer needed
+    for (const st of this.storms) st.goal = want.some((w) => Math.hypot(w.x - st.x, w.z - st.z) < 0.5) ? 1 : 0
+    for (const w of want) {
+      if (this.storms.some((st) => Math.hypot(w.x - st.x, w.z - st.z) < 0.5)) continue
+      const mesh = new THREE.Mesh(this.stormGeo, new THREE.MeshLambertMaterial({ color: '#6b737a', emissive: '#3a4046', emissiveIntensity: 0.4, transparent: true, opacity: 0, depthWrite: false }))
+      mesh.scale.set(w.r * 0.2, 0.55, w.r * 0.2)
+      this.group.add(mesh)
+      // low over the town, so it reads as its own weather from any angle
+      this.storms.push({ mesh, x: w.x, z: w.z, y: 6.5 + w.r * 0.25, k: 0, goal: 1 })
+    }
+  }
+
+  /** a burst of sparks at a point: 'proof' rises green, 'bad' falls red, 'big' is a firework */
+  burst(x: number, y: number, z: number, kind: 'proof' | 'bad' | 'big') {
+    const colors = kind === 'big' ? ['#c4ef3a', '#ffd76a', '#ffffff', '#7fd3ff'] : kind === 'bad' ? ['#ff7a5a', '#d2553a'] : ['#c4ef3a', '#e6ff9a']
+    const n = kind === 'big' ? 46 : 16
+    const h = kind === 'big' ? y + 7 + Math.random() * 3 : y + 0.6
+    for (let i = 0; i < n; i++) {
+      if (this.sparkList.length >= this.sparks.count) this.sparkList.shift()
+      const a = Math.random() * Math.PI * 2, e = Math.random() * Math.PI
+      const sp = kind === 'big' ? 3 + Math.random() * 2.5 : 0.6 + Math.random() * 0.8
+      this.sparkList.push({
+        x: x + (kind === 'big' ? 0 : (Math.random() - 0.5) * 1.2),
+        y: h,
+        z: z + (kind === 'big' ? 0 : (Math.random() - 0.5) * 1.2),
+        vx: kind === 'big' ? Math.cos(a) * Math.sin(e) * sp : Math.cos(a) * 0.25,
+        vy: kind === 'big' ? Math.cos(e) * sp : kind === 'bad' ? -0.4 : sp * 1.6,
+        vz: kind === 'big' ? Math.sin(a) * Math.sin(e) * sp : Math.sin(a) * 0.25,
+        t: 0,
+        life: kind === 'big' ? 1.6 + Math.random() * 0.8 : 1.2 + Math.random() * 0.6,
+        c: new THREE.Color(colors[i % colors.length]),
+      })
+    }
+  }
+
+  /** anything short-lived still running (sparks), so the engine keeps drawing */
+  busy() {
+    return this.sparkList.length > 0 || this.storms.some((s) => Math.abs(s.k - s.goal) > 0.01)
   }
 
   /** where smoke rises from: the tops of chimneys, collected from the towns */
@@ -188,6 +250,72 @@ export class Atmos {
     }
     this.smoke.instanceMatrix.needsUpdate = true
     ;(this.smoke.material as THREE.MeshLambertMaterial).opacity = 0.5 * (1 - night * 0.6)
+
+    // storms gather and clear slowly; rain falls under the ones that are here
+    for (const st of this.storms) {
+      st.k += (st.goal - st.k) * Math.min(1, dt * 0.6)
+      st.mesh.position.set(st.x + Math.sin(t * 0.2) * 0.6, st.y, st.z + Math.cos(t * 0.17) * 0.6)
+      ;(st.mesh.material as THREE.MeshLambertMaterial).opacity = st.k * 0.93
+      st.mesh.visible = st.k > 0.01
+    }
+    this.storms = this.storms.filter((st) => {
+      if (st.goal === 0 && st.k < 0.01) {
+        this.group.remove(st.mesh)
+        ;(st.mesh.material as THREE.Material).dispose()
+        return false
+      }
+      return true
+    })
+    const live = this.storms.filter((st) => st.k > 0.2)
+    if (this.drops.length !== this.rain.count) this.drops = Array.from({ length: this.rain.count }, (_, i) => ({ s: i, x: Math.random() - 0.5, z: Math.random() - 0.5, t: Math.random() }))
+    for (let i = 0; i < this.rain.count; i++) {
+      const st = live[i % Math.max(1, live.length)]
+      const d = this.drops[i]
+      if (!st) {
+        this.m.makeScale(0, 0, 0)
+        this.rain.setMatrixAt(i, this.m)
+        continue
+      }
+      d.t += dt * 0.9
+      if (d.t > 1) {
+        d.t -= 1
+        d.x = Math.random() - 0.5
+        d.z = Math.random() - 0.5
+      }
+      const span = st.mesh.scale.x * 4.5
+      p.set(st.mesh.position.x + d.x * span, st.y - 0.5 - d.t * (st.y - 0.5), st.mesh.position.z + d.z * span)
+      this.m.compose(p, q.identity(), s.setScalar(st.k))
+      this.rain.setMatrixAt(i, this.m)
+    }
+    this.rain.instanceMatrix.needsUpdate = true
+    this.rain.visible = live.length > 0
+
+    // sparks fly, slow, fall and fade
+    this.sparkList = this.sparkList.filter((sp) => (sp.t += dt / sp.life) < 1)
+    const col = new THREE.Color()
+    for (let i = 0; i < this.sparks.count; i++) {
+      const sp = this.sparkList[i]
+      if (!sp) {
+        this.m.makeScale(0, 0, 0)
+        this.sparks.setMatrixAt(i, this.m)
+        continue
+      }
+      const drag = Math.pow(0.35, dt)
+      sp.vx *= drag
+      sp.vz *= drag
+      sp.vy = sp.vy * drag - 1.6 * dt
+      sp.x += sp.vx * dt
+      sp.y += sp.vy * dt
+      sp.z += sp.vz * dt
+      p.set(sp.x, sp.y, sp.z)
+      this.m.compose(p, q.identity(), s.setScalar((1 - sp.t) * (1.1 - sp.t * 0.4)))
+      this.sparks.setMatrixAt(i, this.m)
+      col.copy(sp.c).multiplyScalar(1.6)
+      this.sparks.setColorAt(i, col)
+    }
+    this.sparks.instanceMatrix.needsUpdate = true
+    if (this.sparks.instanceColor) this.sparks.instanceColor.needsUpdate = true
+    this.sparks.visible = this.sparkList.length > 0
     return true
   }
 

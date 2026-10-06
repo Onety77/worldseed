@@ -14,9 +14,9 @@ import * as THREE from 'three'
 
 const glsl = String.raw
 
-export const SKY = {
+const SKY = {
   day: { top: '#7fb9df', horizon: '#d9ecf2', sun: '#fff1d6', sunI: 2.15, skyLight: '#cfe6f5', groundLight: '#7e9a5a', hemiI: 1.15, fog: '#cfe3ea' },
-  night: { top: '#070d1d', horizon: '#1b2c46', sun: '#9dbcf0', sunI: 0.8, skyLight: '#3b5688', groundLight: '#121a16', hemiI: 0.85, fog: '#14213a' },
+  night: { top: '#08101f', horizon: '#20324f', sun: '#a9c4f2', sunI: 1.0, skyLight: '#48649c', groundLight: '#141c18', hemiI: 1.0, fog: '#172540' },
 }
 
 const domeVS = glsl`

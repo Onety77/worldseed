@@ -20,7 +20,7 @@ export const HALF = 100
 const glsl = String.raw
 
 /** the colours of the ground, by day (night is the same land under different light) */
-export const GROUND = {
+const GROUND = {
   grassDark: '#7ba65a',
   grass: '#97bf68',
   grassLight: '#b3d27d',
@@ -213,7 +213,7 @@ const groundColor = glsl`
     // a soft ring of light around the world in focus, at the foot of its hill
     halo = max(halo, exp(-pow((t - 1.1) / .028, 2.)) * m.z);
     // after dark, a lived-in world lights the ground around its buildings
-    lamps += uGlow[i] * exp(-t * t * 5.) * (1. - m.w * .8);
+    lamps += uGlow[i] * exp(-t * t * 6.) * (1. - m.w * .8);
   }
 
   if (gh >= 0.) {
@@ -315,7 +315,9 @@ const groundColor = glsl`
   }
 
   // night: warm light around lived-in worlds
-  glow += uLamp * min(lamps, 1.) * uNight * .02 * (gh >= 0. ? 1. : .4);
+  // from far away, a lived-in world reads as a warm glow; close up, its windows and lanterns take over
+  float far_ = smoothstep(50., 130., length(cameraPosition - vW));
+  glow += uLamp * min(lamps, 1.) * uNight * mix(.02, .07, far_) * (gh >= 0. ? 1. : .4);
 
   diffuseColor.rgb = col;
   vec3 gNormalView = normalize((viewMatrix * vec4(gn, 0.)).xyz);

@@ -29,7 +29,7 @@ export const PALETTES: Record<Template, { walls: string[]; roof: string; trim: s
 }
 const GLASS = new THREE.Color('#3d5360')
 const BRAND = new THREE.Color('#b9e536')
-export const LAMP = new THREE.Color('#ffc66e')
+const LAMP = new THREE.Color('#ffc66e')
 const LAMP_DAY = new THREE.Color('#f1e3b8')
 const WOOD = new THREE.Color('#8c6a47')
 
@@ -388,7 +388,7 @@ export interface Site {
 }
 
 /** a hipped roof rising to a point over a w×d footprint */
-export function pyramid(b: Builder, f: Frame, y: number, w: number, d: number, h: number, tone: Tone = 'roof') {
+function pyramid(b: Builder, f: Frame, y: number, w: number, d: number, h: number, tone: Tone = 'roof') {
   const e = [P(f, -w, -d, y), P(f, w, -d, y), P(f, w, d, y), P(f, -w, d, y)]
   const top = P(f, 0, 0, y + h)
   for (let i = 0; i < 4; i++) {
@@ -398,7 +398,7 @@ export function pyramid(b: Builder, f: Frame, y: number, w: number, d: number, h
 }
 
 /** a pennant on a pole, in the world's roof colour */
-export function flagpole(b: Builder, x: number, z: number, y0: number, h: number) {
+function flagpole(b: Builder, x: number, z: number, y0: number, h: number) {
   b.edge([x, y0, z], [x, y0 + h, z])
   box(b, { x, z, rot: 0 }, y0, 0.02, 0.02, h, { roof: 'trim', windows: false, edges: false })
   b.tri([x, y0 + h, z], [x + 0.5, y0 + h - 0.13, z + 0.05], [x, y0 + h - 0.28, z], 'roof')

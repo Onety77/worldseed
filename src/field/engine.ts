@@ -114,13 +114,20 @@ export class FieldEngine {
   /** a timed flight from one view to the next: lift, travel, settle. Any touch cancels it */
   private flight: { from: Cam; t0: number; dur: number; lift: number } | null = null
   private lastRender = 0
+  /**
+   * The quality governor: if frames run long it lowers the render resolution a step at a
+   * time and, as a last resort, turns shadows off; with plenty of headroom it steps back up.
+   */
+  private perf = { ema: 16, slow: 0, fast: 0, ratio: 1, max: 1, shadows: true }
   private district: { input: DistrictInput; d: District; shown: number } | null = null
 
   constructor(container: HTMLElement, quality: 'high' | 'low') {
     this.quality = quality
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: quality === 'high' ? 'high-performance' : 'default' })
     // phones have dense screens; 1.5x is sharp enough for ink lines and halves the pixel work of 3x
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality === 'high' ? 1.75 : 1.5))
+    this.perf.max = Math.min(window.devicePixelRatio || 1, quality === 'high' ? 1.75 : 1.5)
+    this.perf.ratio = this.perf.max
+    this.renderer.setPixelRatio(this.perf.ratio)
     this.canvas = this.renderer.domElement
     this.canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none'
     container.appendChild(this.canvas)
@@ -195,6 +202,7 @@ export class FieldEngine {
       this.lastMoat.set(w.id, w.hill.moat)
     }
     this.syncSettlements()
+    this.atmos.setStorms(this.worlds.map((w) => ({ id: w.id, x: w.hill.x, z: w.hill.z, r: w.hill.radius, k: w.trouble })))
     const real = this.worlds.filter((w) => w.id !== 'draft')
     // a plot being planted is cleared of trees
     const draft = this.worlds.find((w) => w.id === 'draft')
@@ -400,6 +408,7 @@ export class FieldEngine {
     if (!w) return
     const inside = this.district && this.view.kind === 'district' && this.view.id === id && kind === 'proof'
     const at = inside ? this.district!.d.pingSpot() : { x: w.hill.x, z: w.hill.z }
+    if (!this.reduced) this.atmos.burst(at.x, heightAt(at.x, at.z, this.hills()) + 1.5, at.z, kind)
     const scale = inside ? 0.32 : kind === 'big' ? 2.4 : kind === 'bad' ? -1.4 : 1
     this.pings = [...this.pings.slice(-7), { ...at, at: performance.now(), scale }]
     this.wake()
@@ -631,6 +640,7 @@ export class FieldEngine {
       u.uTrouble.value[i] = s.trouble
       const c = this.ceremonies.get(w.id)
       if (c !== undefined && now - c > 12_000) this.ceremonies.delete(w.id)
+      else if (c !== undefined && !this.reduced && Math.random() < dt * 1.4) this.atmos.burst(w.hill.x + (Math.random() - 0.5) * w.hill.radius, s.height, w.hill.z + (Math.random() - 0.5) * w.hill.radius, 'big')
     })
     // settlements appear once their hill has grown into place
     for (const w of this.worlds) {
@@ -688,6 +698,7 @@ export class FieldEngine {
     if (!this.reduced && this.life.step(dt)) moving = true
     // with reduced motion the air holds still, but is still drawn where it is
     if (this.atmos.step(this.reduced ? 0 : dt, this.reduced ? 0 : (now - this.t0) / 1000, this.camera.position, this.night.k) && !this.reduced) moving = true
+    if (this.atmos.busy()) moving = true
 
     this.pings = this.pings.filter((p) => now - p.at < (Math.abs(p.scale) > 1.2 ? 3600 : 2400))
     for (let i = 0; i < 8; i++) {
@@ -703,6 +714,8 @@ export class FieldEngine {
       if (!document.hidden) this.wake()
       return
     }
+    // frame time while drawing continuously, for the governor
+    if (now - this.lastRender < 250) this.govern(now - this.lastRender)
     this.lastRender = now
 
     // camera
@@ -878,6 +891,43 @@ export class FieldEngine {
       },
       { passive: false },
     )
+  }
+
+  private govern(ms: number) {
+    const p = this.perf
+    p.ema += (ms - p.ema) * 0.05
+    if (p.ema > 26) {
+      p.slow++
+      p.fast = 0
+    } else if (p.ema < 13) {
+      p.fast++
+      p.slow = 0
+    } else {
+      p.slow = Math.max(0, p.slow - 1)
+      p.fast = Math.max(0, p.fast - 1)
+    }
+    // about two seconds of slow frames: give something up
+    if (p.slow > 90) {
+      p.slow = 0
+      if (p.ratio > 1) p.ratio = Math.max(1, p.ratio - 0.25)
+      else if (p.shadows) {
+        p.shadows = false
+        this.sky.sun.castShadow = false
+      } else return
+      this.renderer.setPixelRatio(p.ratio)
+      this.resize()
+    }
+    // about eight seconds of easy frames: take some back
+    if (p.fast > 480) {
+      p.fast = 0
+      if (!p.shadows) {
+        p.shadows = true
+        this.sky.sun.castShadow = true
+      } else if (p.ratio < p.max) p.ratio = Math.min(p.max, p.ratio + 0.25)
+      else return
+      this.renderer.setPixelRatio(p.ratio)
+      this.resize()
+    }
   }
 
   private zoom(f: number) {
