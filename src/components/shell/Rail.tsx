@@ -16,7 +16,8 @@ import { StageFilter } from './StageFilter'
 import { Legend } from './Legend'
 import { InboxButton } from './Inbox'
 import { searchOpen } from './Search'
-import { Search as SearchIcon, Wallet } from 'lucide-react'
+import { Moon, Search as SearchIcon, Sun, Wallet } from 'lucide-react'
+import { toggleTheme, useTheme } from '@/lib/theme'
 import { usePortfolio } from '@/lib/wallet'
 import { connectOpen } from '@/components/wallet/Connect'
 import { Identicon } from '@/pages/You'
@@ -119,7 +120,7 @@ export function Rail() {
           <Link to="/how" className="flex items-center gap-1 font-medium text-ink-2 hover-device:hover:text-ink">
             How it works <ArrowUpRight className="size-3.5" />
           </Link>
-          <span className="font-mono text-[10.5px] tracking-wide text-ink-3">Robinhood Chain</span>
+          <ThemeButton />
         </div>
       </div>
     </nav>
@@ -166,5 +167,15 @@ function YouLink() {
       </span>
       <span className="font-mono text-[11.5px] tabular">{usd(me.value + me.cashUsd)}</span>
     </NavLink>
+  )
+}
+
+function ThemeButton() {
+  const theme = useTheme()
+  return (
+    <button onClick={toggleTheme} aria-pressed={theme === 'dark'} className="flex h-8 items-center gap-1.5 rounded-[8px] px-2 text-[12.5px] font-medium text-ink-2 hover-device:hover:bg-hover hover-device:hover:text-ink">
+      {theme === 'dark' ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+      {theme === 'dark' ? 'Day' : 'Night'}
+    </button>
   )
 }

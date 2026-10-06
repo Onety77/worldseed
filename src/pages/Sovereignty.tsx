@@ -102,7 +102,7 @@ function Harrow() {
   const run = runwayMonths(w)
   return (
     <section aria-label="Graduating now" className="px-5 pt-5 lg:px-6">
-      <div className={cn('overflow-hidden rounded-[14px] ring-1 ring-inset', done ? 'bg-ink text-paper ring-ink' : 'bg-raised ring-line')} onMouseEnter={() => engine?.setHover('harrow')} onMouseLeave={() => engine?.setHover(null)}>
+      <div className={cn('overflow-hidden rounded-[14px] ring-1 ring-inset', done ? 'ink-card ring-transparent' : 'bg-raised ring-line')} onMouseEnter={() => engine?.setHover('harrow')} onMouseLeave={() => engine?.setHover(null)}>
         <div className="flex items-center gap-3 px-4 pt-4">
           <WorldMark world={w} className="size-10" />
           <div className="min-w-0 flex-1">

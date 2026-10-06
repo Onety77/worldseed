@@ -9,6 +9,19 @@ import { challenges as sampleChallenges, jobs, proposals as sampleProposals } fr
 */
 
 export const filed = createStore<Challenge[]>([])
+/** comments you posted, by proposal */
+export const posted = createStore<Record<string, { id: string; text: string; at: number }[]>>({})
+/** your progress on jobs you took */
+export interface JobRun {
+  stage: 'claimed' | 'submitted' | 'review' | 'window' | 'paid'
+  link?: string
+  notes?: string
+  at: number
+}
+export const runs = createStore<Record<string, JobRun>>({})
+export const setRun = (id: string, r: JobRun) => runs.set((x) => ({ ...x, [id]: r }))
+/** challenges of yours that have been ruled on and paid out */
+export const settled = createStore<string[]>([])
 export const votes = createStore<Record<string, 'for' | 'against'>>({})
 
 export function fileChallenge(c: Omit<Challenge, 'id' | 'status' | 'endsAt' | 'by'>) {

@@ -54,7 +54,17 @@ export function listToken(id: string, price: number) {
 export const priceOf = (id: string) => market.get().price[id] ?? 0
 export const usePrice = (id: string) => market.use().price[id] ?? 0
 
+const tradeSubs = new Set<(id: string) => void>()
+/** hear about every trade, e.g. to send packets down a world's roads */
+export function onTrade(cb: (id: string) => void) {
+  tradeSubs.add(cb)
+  return () => {
+    tradeSubs.delete(cb)
+  }
+}
+
 export function recordTrade(id: string, side: 'buy' | 'sell', tokens: number, usd: number, impact: number, by: string) {
+  tradeSubs.forEach((f) => f(id))
   market.set((m) => {
     const p = m.price[id] ?? 0
     const next = p * (side === 'buy' ? 1 + impact : 1 - impact)

@@ -4,8 +4,11 @@ import { continent } from './height'
 import { useReducedMotion } from 'motion/react'
 import type { Stage } from '@/lib/types'
 import { createStore } from '@/lib/store'
-import { useGraduations, usePings, useWorlds } from '@/lib/sim'
-import { FieldEngine, webglAvailable, type View } from './engine'
+import { useEvidence, useGraduations, usePings, useWorlds } from '@/lib/sim'
+import { FieldEngine, webglAvailable, type FieldWorld, type View } from './engine'
+import { readiness } from '@/lib/rules'
+import { useTheme } from '@/lib/theme'
+import { onTrade } from '@/lib/market'
 import { hillFor } from './fromWorld'
 
 /*
@@ -95,6 +98,14 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const theme = useTheme()
+  const first = useRef(true)
+  useEffect(() => {
+    // the first paint takes the theme as it is; later switches crossfade
+    engine?.setNight(theme === 'dark', first.current)
+    if (engine) first.current = false
+  }, [engine, theme])
+
   useEffect(() => {
     engine?.setReduced(Boolean(reduced))
   }, [engine, reduced])
@@ -117,23 +128,40 @@ function Sync({ engine }: { engine: FieldEngine }) {
   const draft = draftHill.use()
   const pings = usePings()
   useGraduations()
+  // a planted seed gets its first tent when its governor publishes a first proof
+  const ev = useEvidence()
+  const proven = useMemo(() => new Set(ev.filter((e) => e.id.includes('-live-')).map((e) => e.worldId)), [ev])
   useEffect(() => {
-    const list = worlds.map((w) => ({ id: w.id, hill: hillFor(w), muted: filter !== 'all' && w.stage !== filter, built: w.stage === 'seed' ? 0 : w.apps.length * (w.stage === 'sovereign' ? 3 : 2) }))
-    if (draft) list.push({ id: draft.id, hill: { x: draft.x, z: draft.z, radius: draft.radius, height: draft.height, tiers: 1, moat: 0 }, muted: false, built: 0 })
+    const list: FieldWorld[] = worlds.map((w) => ({
+      id: w.id,
+      hill: hillFor(w),
+      muted: filter !== 'all' && w.stage !== filter,
+      trouble: w.charter.objectives.some((o) => o.status === 'failed') ? 1 : w.charter.objectives.some((o) => o.status === 'challenged') ? 0.35 : 0,
+      town: {
+        template: w.template,
+        apps: w.stage === 'seed' ? (proven.has(w.id) ? 1 : 0) : w.apps.length,
+        houses: w.stage === 'seed' ? 0 : w.apps.length * (w.stage === 'sovereign' ? 3 : 2),
+        lit: w.stage === 'sovereign' ? 1 : w.stage === 'realm' ? readiness(w) : 0.2,
+        seed: w.stage === 'seed',
+      },
+    }))
+    if (draft) list.push({ id: draft.id, hill: { x: draft.x, z: draft.z, radius: draft.radius, height: draft.height, tiers: 1, moat: 0 }, muted: false, trouble: 0, town: { template: 'frontier', apps: 0, houses: 0, lit: 0, seed: true } })
     engine.setWorlds(list)
-  }, [engine, worlds, filter, draft])
+  }, [engine, worlds, filter, draft, proven])
   const cover = covers.use()
   useEffect(() => {
     const i = { left: 0, right: 0, top: 0, bottom: 0 }
     for (const c of Object.values(cover)) i[c.side] = Math.max(i[c.side], c.px)
     engine.setInset(i)
   }, [engine, cover])
+  // trades send packets down the world's roads
+  useEffect(() => onTrade((id) => engine.pulse(id)), [engine])
   const seen = useRef(new Set<string>())
   useEffect(() => {
     for (const p of pings) {
       if (seen.current.has(p.id)) continue
       seen.current.add(p.id)
-      engine.ping(p.worldId)
+      engine.ping(p.worldId, p.kind)
     }
   }, [engine, pings])
   return null
@@ -170,14 +198,14 @@ function Fallback() {
     return 'M' + pts.join('L') + 'Z'
   }, [])
   return (
-    <div className="absolute inset-0 bg-[#cddadb]">
+    <div className="absolute inset-0 bg-water">
     <svg className="absolute" style={{ left: inset.left + 12, right: inset.right + 12, top: inset.top + 12, bottom: inset.bottom + 12, width: `calc(100% - ${inset.left + inset.right + 24}px)`, height: `calc(100% - ${inset.top + inset.bottom + 24}px)` }} preserveAspectRatio="xMidYMid meet" viewBox="-58 -50 116 100">
       <path d={coast} fill="var(--paper)" stroke="var(--ink)" strokeOpacity=".6" strokeWidth=".35" />
       {worlds.map((w) => {
         const h = hillFor(w)
         return (
           <g key={w.id} onClick={() => nav(`/w/${w.id}`)} className="cursor-pointer">
-            {h.moat > 0.5 && <circle cx={w.x} cy={w.z} r={h.radius * 1.3} fill="#cddadb" stroke="var(--ink)" strokeOpacity=".4" strokeWidth=".25" strokeDasharray="1 .8" />}
+            {h.moat > 0.5 && <circle cx={w.x} cy={w.z} r={h.radius * 1.3} fill="var(--water)" stroke="var(--ink)" strokeOpacity=".4" strokeWidth=".25" strokeDasharray="1 .8" />}
             {Array.from({ length: h.tiers + 1 }, (_, i) => (
               <circle key={i} cx={w.x} cy={w.z} r={h.radius * (1 - i / (h.tiers + 1.5))} fill={i === 0 ? 'var(--panel)' : 'none'} stroke="var(--ink)" strokeOpacity={0.25 + i * 0.12} strokeWidth=".25" />
             ))}

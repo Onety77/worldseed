@@ -168,12 +168,12 @@ function Activity() {
     ...me.trades.map((t) => ({ id: t.id, at: t.at, title: `${t.side === 'buy' ? 'Bought' : 'Sold'} ${num(t.tokens)} ${ticker(t.worldId)}`, note: `${usd(t.usd)} · ${name(t.worldId)}`, href: `/w/${t.worldId}#trade` })),
     ...Object.entries(v).map(([pid, side]) => {
       const p = props.find((x) => x.id === pid)
-      return { id: pid, at: 0, title: `Voted ${side}`, note: p ? `${p.title} · ${name(p.worldId)}` : '', href: p ? `/w/${p.worldId}#governance` : '/governance' }
+      return { id: pid, at: 0, title: `Voted ${side}`, note: p ? `${p.title} · ${name(p.worldId)}` : '', href: `/p/${pid}` }
     }),
-    ...mineCh.map((c) => ({ id: c.id, at: c.endsAt - 72 * 3_600_000, title: `Bonded ${usd(c.bondUsd)} on a challenge`, note: `${c.claim} · ${name(c.worldId)}`, href: `/w/${c.worldId}#governance` })),
+    ...mineCh.map((c) => ({ id: c.id, at: c.endsAt - 72 * 3_600_000, title: `Bonded ${usd(c.bondUsd)} on a challenge`, note: `${c.claim} · ${name(c.worldId)}`, href: `/c/${c.id}` })),
     ...jobIds.map((id) => {
       const j = jobs.find((x) => x.id === id)
-      return { id, at: 0, title: 'Claimed a job', note: j ? `${j.title} · ${usd(j.escrowUsd)} in escrow` : '', href: j ? `/w/${j.worldId}#work` : '/jobs' }
+      return { id, at: 0, title: 'Claimed a job', note: j ? `${j.title} · ${usd(j.escrowUsd)} in escrow` : '', href: `/j/${id}` }
     }),
   ].sort((a, b) => b.at - a.at)
 

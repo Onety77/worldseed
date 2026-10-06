@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect } from 'react'
-import { Outlet, useNavigate } from 'react-router-dom'
+import { useEffect, useLayoutEffect, useMemo } from 'react'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useMedia } from '@/lib/useMedia'
-import { useWorlds } from '@/lib/sim'
+import { useGraduations, useWorlds } from '@/lib/sim'
+import { useNow } from '@/lib/clock'
 import { FieldProvider, useField } from '@/field/Field'
 import { Labels } from '@/field/Labels'
 import { labelMode } from '@/field/labels'
@@ -9,7 +10,7 @@ import type { LabelDetail } from '@/field/Labels'
 import type { World } from '@/lib/types'
 import { Rail } from './Rail'
 import { TopBar } from './TopBar'
-import { GraduationNotice } from './Notice'
+import { MomentNotice } from './Notice'
 import { MapControls } from './MapControls'
 import { SearchPalette } from './Search'
 import { InboxPanel, useInboxFeed } from './Inbox'
@@ -32,7 +33,7 @@ export function Shell() {
       </a>
       <OpenOnTap />
       {wide ? <Rail /> : <TopBar />}
-      <GraduationNotice />
+      <MomentNotice />
       <MapControls />
       <main id="content" tabIndex={-1} className="outline-none">
         <Outlet />
@@ -49,14 +50,20 @@ export function Shell() {
 function FieldLabels() {
   const worlds = useWorlds()
   const mode = labelMode.use()
-  return <Labels worlds={worlds} detail={mode.detail} focus={mode.focus} dim={mode.dim} hide={mode.hide} />
+  const grads = useGraduations()
+  const now = useNow()
+  const fresh = useMemo(() => new Set(grads.filter((g) => now - g.at < 45_000).map((g) => g.worldId)), [grads, now])
+  return <Labels worlds={worlds} detail={mode.detail} focus={mode.focus} dim={mode.dim} hide={mode.hide} fresh={fresh} />
 }
 
 /** A tap on a hill opens that world. */
 function OpenOnTap() {
   const engine = useField()
   const nav = useNavigate()
+  const { pathname } = useLocation()
   useEffect(() => engine?.onSelect((id) => nav(`/w/${id}`)), [engine, nav])
+  // whatever was hovered on the last page is no longer under the pointer
+  useEffect(() => engine?.setHover(null), [engine, pathname])
   return null
 }
 

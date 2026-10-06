@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import type { Job, World } from '@/lib/types'
 import { cn } from '@/lib/cn'
 import { useNow } from '@/lib/clock'
@@ -39,7 +40,9 @@ export function JobRow({ j, world }: { j: Job; world?: World }) {
         {world && <WorldMark world={world} className="mt-0.5 size-7" />}
         <div className="min-w-0 flex-1">
           {world && <p className="text-[12px] font-semibold text-ink-3">{world.name}</p>}
-          <p className="text-[14.5px] leading-snug font-semibold">{j.title}</p>
+          <Link to={`/j/${j.id}`} className="block text-[14.5px] leading-snug font-semibold underline-offset-4 hover-device:hover:underline">
+            {j.title}
+          </Link>
           <p className="mt-1 text-[12.5px] text-ink-3">Verified by {j.verifier.toLowerCase()}</p>
         </div>
         <div className="shrink-0 text-right">

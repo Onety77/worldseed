@@ -13,7 +13,7 @@ import { publishProof } from './sim'
 export const STEPS: Evidence['step'][] = ['Observe', 'Propose', 'Simulate', 'Approve', 'Execute', 'Publish proof', 'Evaluate']
 const STEP_MS = 3600
 
-export function planFor(w: World) {
+function planFor(w: World) {
   const p = preset(w.template)
   if (w.stage === 'seed')
     return [`Deploy ${p.modules[0]} from the template registry`, `Fund a job: ${p.jobs[0].toLowerCase()}`, 'Publish the first weekly operations report']

@@ -6,7 +6,7 @@ export type Size = 'sm' | 'md' | 'lg'
 const variants: Record<Variant, string> = {
   // sprout: the thing to do next
   primary: 'bg-sprout text-on-sprout shadow-[inset_0_0_0_1px_rgb(20_24_19/0.12),0_1px_0_rgb(20_24_19/0.08)] hover-device:hover:bg-[#b8e62a]',
-  ink: 'bg-ink text-paper hover-device:hover:bg-[#2a3028]',
+  ink: 'bg-ink text-paper hover-device:hover:bg-ink/85',
   outline: 'bg-raised/60 text-ink ring-1 ring-inset ring-line-2 hover-device:hover:bg-raised hover-device:hover:ring-ink-4',
   ghost: 'text-ink-2 hover-device:hover:text-ink hover-device:hover:bg-hover',
   danger: 'text-red ring-1 ring-inset ring-red/35 bg-raised/60 hover-device:hover:bg-red-soft',

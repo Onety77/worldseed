@@ -2,6 +2,7 @@ import { createStore } from './store'
 import type { World } from './types'
 import { market, priceOf, recordTrade } from './market'
 import { notify } from './inbox'
+import { setRun } from './civic'
 
 /*
   A pretend wallet, for the prototype. Connecting gives you a sample address with test
@@ -83,9 +84,16 @@ export function trade(w: World, side: 'buy' | 'sell', amount: number) {
   return q
 }
 
+/** money arriving: a job paid, a bond returned */
+export function credit(usd: number) {
+  const s = wallet.get()
+  if (s.connected) wallet.set({ ...s, cashUsd: s.cashUsd + usd })
+}
+
 export function claimJob(id: string, title: string, worldId: string) {
   claimed.set((l) => (l.includes(id) ? l : [...l, id]))
-  notify({ kind: 'job', title: 'Job claimed', body: `“${title}”. Submit your work before the window closes; payment releases after verification.`, worldId, href: `/w/${worldId}#work` })
+  setRun(id, { stage: 'claimed', at: Date.now() })
+  notify({ kind: 'job', title: 'Job claimed', body: `“${title}”. Submit your work before the window closes; payment releases after verification.`, worldId, href: `/j/${id}` })
 }
 
 export const usePortfolio = () => {

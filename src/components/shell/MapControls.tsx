@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Minus, Plus } from 'lucide-react'
+import { Minus, Moon, Plus, Sun } from 'lucide-react'
+import { toggleTheme, useTheme } from '@/lib/theme'
 import { cn } from '@/lib/cn'
 import { useMedia } from '@/lib/useMedia'
 import { useField, useInsets } from '@/field/Field'
@@ -15,6 +16,7 @@ export function MapControls() {
   const wide = useMedia('(min-width: 1024px)')
   const { pathname } = useLocation()
   const needle = useRef<SVGGElement>(null)
+  const theme = useTheme()
 
   useEffect(() => {
     if (!engine) return
@@ -46,6 +48,10 @@ export function MapControls() {
             <path d="M12 19.5 9.8 12h4.4Z" fill="currentColor" fillOpacity=".55" />
           </g>
         </svg>
+      </button>
+      <span className="mx-2 h-px bg-line" />
+      <button className={btn} onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to day' : 'Switch to night'} aria-pressed={theme === 'dark'}>
+        {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
       </button>
     </section>
   )

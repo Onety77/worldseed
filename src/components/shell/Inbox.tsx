@@ -4,14 +4,14 @@ import { Bell, BriefcaseBusiness, CircleCheck, FileCheck2, Landmark, Scale, Shie
 import { cn } from '@/lib/cn'
 import { createStore } from '@/lib/store'
 import { useNow } from '@/lib/clock'
-import { getState, useGraduations } from '@/lib/sim'
+import { getState, useFailures, useGraduations } from '@/lib/sim'
 import { inbox, markAllRead, markRead, notify, type Note } from '@/lib/inbox'
 import { wallet } from '@/lib/wallet'
 import { ago } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
 import { Dialog } from '@/components/ui/Dialog'
 
-export const inboxOpen = createStore(false)
+const inboxOpen = createStore(false)
 
 const icon: Record<Note['kind'], LucideIcon> = {
   wallet: Wallet,
@@ -105,6 +105,14 @@ export function useInboxFeed() {
     const w = getState().worlds.find((x) => x.id === g.worldId)
     if (w) notify({ kind: 'chain', title: `${w.name} is sovereign`, body: `Chain ${w.chain?.chainId} is live, settling to Robinhood Chain, with ${w.ticker} as gas.`, worldId: w.id, href: `/w/${w.id}` })
   }, [grads])
+
+  const fails = useFailures()
+  useEffect(() => {
+    const f = fails[fails.length - 1]
+    if (!f) return
+    const w = getState().worlds.find((x) => x.id === f.worldId)
+    if (w) notify({ kind: 'challenge', title: `${w.name} missed its Growth milestone`, body: 'A challenge was upheld. The charter’s exit routes are open: a recovery amendment, a new governor, a takeover or a wind-down.', worldId: w.id, href: `/w/${w.id}#governance` })
+  }, [fails])
 
   useEffect(() => {
     let t = 0

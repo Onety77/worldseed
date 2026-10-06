@@ -18,9 +18,14 @@ export interface LabelDetail {
   tone?: 'green' | 'red'
 }
 
-export function Labels({ worlds, focus, detail, dim = false, hide = null }: { worlds: World[]; focus?: string | null; detail?: (w: World) => LabelDetail | null; dim?: boolean; hide?: string | null }) {
+export function Labels({ worlds, focus, detail, dim = false, hide = null, fresh }: { worlds: World[]; focus?: string | null; detail?: (w: World) => LabelDetail | null; dim?: boolean; hide?: string | null; fresh?: Set<string> }) {
   const engine = useField()
   const refs = useRef(new Map<string, HTMLElement>())
+  // tags that win the space: the focused world, and any that just earned a chain
+  const first = useRef(new Set<string>())
+  useEffect(() => {
+    first.current = new Set([...(fresh ?? []), ...(focus ? [focus] : [])])
+  }, [fresh, focus])
   const sizes = useRef(new Map<string, { w: number; h: number }>())
 
   useEffect(() => {
@@ -31,7 +36,8 @@ export function Labels({ worlds, focus, detail, dim = false, hide = null }: { wo
     const off = engine.onFrame((list: Projected[]) => {
       const placed: { x: number; y: number; w: number; h: number }[] = []
       // nearest first, so they win the space
-      const sorted = [...list].sort((a, b) => (a.id === focus ? -1 : b.id === focus ? 1 : a.depth - b.depth))
+      const top = first.current
+      const sorted = [...list].sort((a, b) => (top.has(a.id) && !top.has(b.id) ? -1 : top.has(b.id) && !top.has(a.id) ? 1 : a.depth - b.depth))
       for (const p of sorted) {
         const el = refs.current.get(p.id)
         if (!el) continue
@@ -59,13 +65,13 @@ export function Labels({ worlds, focus, detail, dim = false, hide = null }: { wo
         }
         if (!fits) placed.push({ x: p.x - size.w / 2, y: p.y - lead - size.h, w: size.w, h: size.h })
         el.style.visibility = 'visible'
-        const clear = fits || p.id === focus
+        const clear = fits || top.has(p.id)
         el.style.opacity = String(clear ? 1 : 0.28)
         // a tag faded back behind another is out of reach until it has room again
         if (el.inert === clear) el.inert = !clear
         el.style.transform = `translate3d(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px, 0)`
         el.style.setProperty('--lead', `${lead.toFixed(0)}px`)
-        el.style.zIndex = String(p.id === focus ? 50 : Math.round((1 - p.depth) * 40))
+        el.style.zIndex = String(top.has(p.id) ? 50 : Math.round((1 - p.depth) * 40))
       }
     })
     return () => {
@@ -84,8 +90,10 @@ export function Labels({ worlds, focus, detail, dim = false, hide = null }: { wo
   return (
     <nav aria-label="Worlds on the map" className="pointer-events-none fixed inset-0 z-[1] overflow-hidden">
       {worlds.map((w) => {
-        const d = detail?.(w)
-        const on = focus === w.id
+        const born = fresh?.has(w.id) && w.chain
+        // a world that has just earned its chain wears its chain number for a while
+        const d = born ? { text: `chain ${w.chain!.chainId}`, tone: undefined } : detail?.(w)
+        const on = focus === w.id && !born
         return (
           <div
             key={w.id}
@@ -105,7 +113,7 @@ export function Labels({ worlds, focus, detail, dim = false, hide = null }: { wo
               onBlur={() => engine.setHover(null)}
               className={cn(
                 'pointer-events-auto absolute bottom-[var(--lead)] left-0 flex -translate-x-1/2 items-center gap-1.5 rounded-full py-1 pr-2.5 pl-1.5 text-[12.5px] leading-none font-semibold whitespace-nowrap shadow-[0_0_0_1px_var(--line-2),0_6px_16px_-10px_rgb(20_24_19/0.5)] transition-[background-color,box-shadow,color] duration-200',
-                on ? 'bg-ink text-paper' : 'bg-raised/90 text-ink backdrop-blur-sm group-data-hover:bg-sprout group-data-hover:text-on-sprout',
+                born ? 'fresh-chain bg-sprout text-on-sprout' : on ? 'bg-ink text-paper' : 'bg-raised/90 text-ink backdrop-blur-sm group-data-hover:bg-sprout group-data-hover:text-on-sprout',
                 w.mine && !on && 'shadow-[0_0_0_1.5px_var(--green),0_6px_16px_-10px_rgb(20_24_19/0.5)]',
               )}
             >
@@ -115,7 +123,7 @@ export function Labels({ worlds, focus, detail, dim = false, hide = null }: { wo
                 <span
                   className={cn(
                     'ml-0.5 font-mono text-[10.5px] font-medium tracking-wide',
-                    on ? 'text-paper/75' : d.tone === 'red' ? 'text-red' : d.tone === 'green' ? 'text-green' : 'text-ink-3',
+                    born ? 'text-on-sprout/80' : on ? 'text-paper/75' : d.tone === 'red' ? 'text-red' : d.tone === 'green' ? 'text-green' : 'text-ink-3',
                     !on && 'group-data-hover:text-on-sprout/75',
                   )}
                 >

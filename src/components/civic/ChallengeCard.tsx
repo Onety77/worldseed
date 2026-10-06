@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { ShieldAlert } from 'lucide-react'
 import type { Challenge, World } from '@/lib/types'
 import { useNow } from '@/lib/clock'
@@ -17,7 +18,9 @@ export function ChallengeCard({ c, world }: { c: Challenge; world?: World }) {
           {c.by === 'you' ? 'You' : c.by} bonded <span className="font-mono text-ink">{usd(c.bondUsd)}</span>
         </span>
       </p>
-      <p className="mt-1.5 text-[14px] leading-snug font-semibold">“{c.claim}”</p>
+      <Link to={`/c/${c.id}`} className="mt-1.5 block text-[14px] leading-snug font-semibold underline-offset-4 hover-device:hover:underline">
+        “{c.claim}”
+      </Link>
       {e && <p className="mt-1 truncate text-[12.5px] text-ink-3">Against: {e.title}</p>}
       <p className="mt-2 text-[12px] text-ink-3">
         Verifier panel rules in <span className="font-mono text-ink tabular">{span(c.endsAt - now)}</span>. Upheld: the bond returns with a reward and the payout is clawed back.

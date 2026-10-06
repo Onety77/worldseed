@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { AnimatePresence, m } from 'motion/react'
 import { ChevronDown, ShieldAlert } from 'lucide-react'
 import type { Evidence, World } from '@/lib/types'
@@ -69,7 +70,7 @@ export function EvidenceRow({ e, world, showWorld = false, arrive = false }: { e
       <AnimatePresence initial={false}>
         {open && (
           <m.div id={id} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: EASE_OUT }} className="overflow-hidden">
-            <Bundle e={e} world={world} mine={Boolean(mine)} />
+            <Bundle e={e} world={world} mine={Boolean(mine)} mineId={mine?.id} />
           </m.div>
         )}
       </AnimatePresence>
@@ -77,7 +78,7 @@ export function EvidenceRow({ e, world, showWorld = false, arrive = false }: { e
   )
 }
 
-function Bundle({ e, world, mine }: { e: Evidence; world: World; mine: boolean }) {
+function Bundle({ e, world, mine, mineId }: { e: Evidence; world: World; mine: boolean; mineId?: string }) {
   const charter = world.charter.versions[world.charter.versions.length - 1]
   const role = world.governor.roles.find((r) => r.model === e.model)?.role ?? 'Planning'
   const rows: [string, string][] = [
@@ -100,7 +101,10 @@ function Bundle({ e, world, mine }: { e: Evidence; world: World; mine: boolean }
       {mine ? (
         <p className="mt-3 flex items-center gap-2 rounded-[10px] bg-red-soft px-3 py-2.5 text-[13px] text-ink">
           <ShieldAlert className="size-4 shrink-0 text-red" />
-          You challenged this bundle. Its payout is held until the 72-hour window closes.
+          <span className="flex-1">You challenged this bundle. Its payout is held while the panel reviews it.</span>
+          <Link to={`/c/${mineId}`} className="shrink-0 font-semibold underline underline-offset-4">
+            Follow the case
+          </Link>
         </p>
       ) : e.verdict === 'pending' || e.verdict === 'passed' ? (
         <Challenge e={e} />
@@ -134,8 +138,8 @@ function Challenge({ e }: { e: Evidence }) {
       className="mt-3 rounded-[10px] p-3 ring-1 ring-red/30 ring-inset"
       onSubmit={(ev) => {
         ev.preventDefault()
-        fileChallenge({ worldId: e.worldId, evidenceId: e.id, bondUsd: bond, claim: reason })
-        notify({ kind: 'challenge', title: 'Challenge filed', body: `Bond of $${bond} posted against “${e.title}”. A verifier panel rules within 72 hours.`, worldId: e.worldId, href: `/w/${e.worldId}#governance` })
+        const c = fileChallenge({ worldId: e.worldId, evidenceId: e.id, bondUsd: bond, claim: reason })
+        notify({ kind: 'challenge', title: 'Challenge filed', body: `Bond of $${bond} posted against “${e.title}”. A verifier panel is reviewing it now.`, worldId: e.worldId, href: `/c/${c.id}` })
       }}
     >
       <fieldset>

@@ -12,7 +12,7 @@ export function LiveGovernor({ w }: { w: World }) {
   const g = useGovernorLive(w)
   const cap = w.treasury.modelCapDailyUsd
   return (
-    <section aria-label="The governor, working now" className="overflow-hidden rounded-[14px] bg-ink text-paper">
+    <section aria-label="The governor, working now" className="ink-card overflow-hidden rounded-[14px]">
       <div className="flex items-center justify-between gap-3 px-4 pt-3.5">
         <p className="flex items-center gap-2 text-[13px] font-semibold">
           <span className="ping relative size-2 rounded-full bg-sprout" />
@@ -28,7 +28,7 @@ export function LiveGovernor({ w }: { w: World }) {
               {i < g.index && <span className="absolute inset-0 bg-paper/70" />}
               {i === g.index && <span className="absolute inset-y-0 left-0 bg-sprout transition-[width] duration-1000 ease-linear" style={{ width: `${Math.max(8, g.progress * 100)}%` }} />}
             </span>
-            <span className={cn('mt-1.5 hidden truncate text-[10.5px] sm:block', i === g.index ? 'font-semibold text-paper' : 'text-paper/50')}>{s}</span>
+            <span className={cn('mt-1.5 hidden truncate text-[10.5px] sm:block', i === g.index ? 'font-semibold text-paper' : 'text-paper/65')}>{s}</span>
           </li>
         ))}
       </ol>
@@ -36,7 +36,7 @@ export function LiveGovernor({ w }: { w: World }) {
       <div className="px-4 pt-3" aria-live="polite">
         <AnimatePresence mode="wait" initial={false}>
           <m.div key={g.step} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.25, ease: EASE_OUT }}>
-            <p className="label text-paper/55">{g.step}</p>
+            <p className="label text-paper/65">{g.step}</p>
             <p className="mt-0.5 text-[14px] leading-snug">{g.detail}</p>
           </m.div>
         </AnimatePresence>
@@ -47,7 +47,7 @@ export function LiveGovernor({ w }: { w: World }) {
           const done = i < g.taskIndex
           const now = i === g.taskIndex
           return (
-            <li key={t} className={cn('flex items-center gap-2 text-[12.5px]', now ? 'text-paper' : done ? 'text-paper/55 line-through decoration-paper/30' : 'text-paper/55')}>
+            <li key={t} className={cn('flex items-center gap-2 text-[12.5px]', now ? 'text-paper' : done ? 'text-paper/65 line-through decoration-paper/30' : 'text-paper/65')}>
               <span className={cn('grid size-3.5 shrink-0 place-items-center rounded-full', done ? 'bg-paper/70 text-ink' : now ? 'ring-1 ring-sprout' : 'ring-1 ring-paper/30')}>
                 {done && <Check className="size-2.5" strokeWidth={3} />}
                 {now && <span className="size-1.5 rounded-full bg-sprout" />}
@@ -62,7 +62,7 @@ export function LiveGovernor({ w }: { w: World }) {
         <div className="flex justify-between text-[12px]">
           <span className="text-paper/60">Compute today</span>
           <span className="font-mono tabular">
-            {usd(g.spent)} <span className="text-paper/50">of {usd(cap)}</span>
+            {usd(g.spent)} <span className="text-paper/65">of {usd(cap)}</span>
           </span>
         </div>
         <Meter value={g.spent / cap} className="mt-1.5 bg-paper/15 [&>span]:bg-paper/80" />

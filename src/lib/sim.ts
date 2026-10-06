@@ -12,6 +12,8 @@ import { seeded } from './seeded'
 */
 
 export const HARROW_GRADUATES_AT = loadedAt + 190_000
+/** Saltglass's challenged Growth milestone is ruled against it a few minutes in */
+const SALTGLASS_FAILS_AT = loadedAt + 320_000
 const HARROW_START = 412_000
 const HARROW_END = 430_000
 
@@ -19,6 +21,7 @@ interface Ping {
   id: string
   worldId: string
   at: number
+  kind?: 'proof' | 'big' | 'bad'
 }
 
 interface State {
@@ -26,9 +29,11 @@ interface State {
   evidence: Evidence[]
   pings: Ping[]
   graduated: { worldId: string; at: number }[]
+  /** milestones missed while you watched */
+  failed: { worldId: string; at: number }[]
 }
 
-let state: State = { worlds: sampleWorlds, evidence: sampleEvidence, pings: [], graduated: [] }
+let state: State = { worlds: sampleWorlds, evidence: sampleEvidence, pings: [], graduated: [], failed: [] }
 const subs = new Set<() => void>()
 let timer: number | undefined
 let n = 0
@@ -59,13 +64,26 @@ function harrow(now: number, s: State): State {
     ]
     grad = [...grad, { worldId: 'harrow', at: now }]
   }
-  const pings = grad.length > s.graduated.length ? [...s.pings, { id: `harrow-grad-${now}`, worldId: 'harrow', at: now }] : s.pings
-  return { ...s, worlds: s.worlds.map((x) => (x.id === 'harrow' ? next : x)), evidence: ev, graduated: grad, pings }
+  // the Field marks the moment itself, as the water opens
+  return { ...s, worlds: s.worlds.map((x) => (x.id === 'harrow' ? next : x)), evidence: ev, graduated: grad }
 }
+
+function saltglass(now: number, s: State): State {
+  if (now < SALTGLASS_FAILS_AT || s.failed.some((f) => f.worldId === 'saltglass')) return s
+  const w = s.worlds.find((x) => x.id === 'saltglass')
+  if (!w) return s
+  const next: World = { ...w, change24h: w.change24h - 0.08, charter: { ...w.charter, objectives: w.charter.objectives.map((o) => (o.era === 'growth' && !o.custom ? { ...o, status: 'failed' } : o)) } }
+  const e: Evidence = { id: `saltglass-fail-${now}`, worldId: 'saltglass', at: now, kind: 'proposal', title: 'Challenge upheld: the Growth milestone failed verification. Recovery routes are open to holders', model: 'Verifier panel', costUsd: 0, ref: hex(rand, 64), verdict: 'failed', step: 'Evaluate' }
+  return { ...s, worlds: s.worlds.map((x) => (x.id === 'saltglass' ? next : x)), evidence: [e, ...s.evidence], failed: [...s.failed, { worldId: 'saltglass', at: now }], pings: [...s.pings, { id: e.id, worldId: 'saltglass', at: now, kind: 'bad' }] }
+}
+
+// in development, tests can jump the simulation ahead to reach its moments
+let skew = 0
+if (import.meta.env.DEV) Object.assign(window, { __sim: { skip: (ms: number) => (skew += ms), state: () => state } })
 
 function tick() {
   if (document.hidden) return
-  const now = Date.now()
+  const now = Date.now() + skew
   // a governor somewhere publishes a proof; busier worlds publish more often
   const pool = state.worlds.flatMap((w) => Array(w.stage === 'seed' ? 1 : w.stage === 'realm' ? 2 : 3).fill(w) as World[])
   const w = pool[Math.floor(rand() * pool.length)]
@@ -76,6 +94,7 @@ function tick() {
     pings: [...state.pings.filter((p) => now - p.at < 6000), { id: e.id, worldId: w.id, at: now }],
   }
   s = harrow(now, s)
+  s = saltglass(now, s)
   set(s)
 }
 
@@ -104,6 +123,7 @@ export const useWorld = (id?: string) => use((s) => s.worlds.find((w) => w.id ==
 export const useEvidence = () => use((s) => s.evidence)
 export const usePings = () => use((s) => s.pings)
 export const useGraduations = () => use((s) => s.graduated)
+export const useFailures = () => use((s) => s.failed)
 export const getState = () => state
 
 /** A governor finished a loop: its proof lands in the log and pings the Field. */
@@ -127,5 +147,5 @@ export function plant(w: World) {
     verdict: 'passed',
     step: 'Publish proof',
   }
-  set({ ...state, worlds: [...state.worlds, w], evidence: [first, ...state.evidence], pings: [...state.pings, { id: `plant-${w.id}`, worldId: w.id, at: now }] })
+  set({ ...state, worlds: [...state.worlds, w], evidence: [first, ...state.evidence], pings: [...state.pings, { id: `plant-${w.id}`, worldId: w.id, at: now, kind: 'big' }] })
 }

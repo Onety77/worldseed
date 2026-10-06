@@ -1,21 +1,26 @@
 import * as THREE from 'three'
+import type { Template } from '@/lib/types'
 import { heightAt, type Hill } from './height'
+import { Builder, footing, house, pole, setLook, signature, tent, type Shared } from './kit'
+import { rand, seedOf } from './settlement'
 
 /*
   Inside a world: what the Field shows when you step into one.
-  - Each deployed app is a building: taller than the houses around it, with a sprout roof.
-  - Each open job is a construction site: a slab and a dashed scaffold where the work goes.
-  - Houses fill in the terraces, so it reads as a settlement and not a diagram.
+  - Each deployed app is a signature building of the world's type, larger than the houses
+    around it, with a sprout roof so you can find the apps at a glance.
+  - Each open job is a construction site: a slab and a dashed scaffold where work goes.
+  - Houses fill the terraces, so it reads as a settlement and not a diagram.
   - Agents (small dots) walk between buildings and sites: the work happening.
-  Everything stands on the hill's surface; anchors tell the label layer where to point.
+  Anchors tell the label layer where each app and job stands.
 */
 
 export interface DistrictInput {
   id: string
+  template: Template
   apps: { key: string }[]
   jobs: { key: string }[]
-  /** a seed has no apps yet; it gets its survey stake and site office */
   seed: boolean
+  lit: number
 }
 
 export interface Anchor {
@@ -26,144 +31,92 @@ export interface Anchor {
   z: number
 }
 
-const TOP = new THREE.Color('#fbfbf8')
-const ROOF = new THREE.Color('#c4ef3a')
-const SIDE_A = new THREE.Color('#dfe3db')
-const SIDE_B = new THREE.Color('#c3cac0')
-const SLAB = new THREE.Color('#e8ebe3')
-const INK = new THREE.Color('#141813')
-
-const rand = (seed: number) => () => {
-  seed = (seed * 16807) % 2147483647
-  return (seed - 1) / 2147483646
-}
-
-interface Spot {
-  x: number
-  z: number
-  s: number
-}
+const AGENT_DAY = [new THREE.Color('#141813'), new THREE.Color('#3f6b00')]
+const AGENT_NIGHT = [new THREE.Color('#e8ece4'), new THREE.Color('#c4ef3a')]
 
 export class District {
-  readonly group = new THREE.Group()
+  readonly group: THREE.Group
   readonly anchors: Anchor[] = []
   private agents: { from: number; to: number; t: number; speed: number; lift: number }[] = []
   private points: THREE.Points
-  private hill: Hill
   private hills: Hill[]
+  private hill: Hill
   private stops: { x: number; z: number }[] = []
+  private night = -1
 
-  constructor(input: DistrictInput, hill: Hill, hills: Hill[]) {
+  constructor(input: DistrictInput, hill: Hill, hills: Hill[], shared: Shared) {
     this.hill = hill
     this.hills = hills
-    const r = rand([...input.id].reduce((a, c) => a * 31 + c.charCodeAt(0), 11) % 2147483646 || 1)
-    const placed: Spot[] = []
-    const pos: number[] = []
-    const col: number[] = []
-    const edges: number[] = []
-    const dashes: number[] = []
-
-    // somewhere free on the hill, within a band of its radius
-    const find = (lo: number, hi: number, size: number): Spot | null => {
+    const r = rand(seedOf(input.id + ':inside'))
+    const b = new Builder(r)
+    b.lit = 0.35 + input.lit * 0.55
+    const g = (x: number, z: number) => heightAt(x, z, hills)
+    const placed: { x: number; z: number; s: number }[] = []
+    const find = (lo: number, hi: number, s: number) => {
       for (let i = 0; i < 60; i++) {
         const a = r() * Math.PI * 2
         const d = hill.radius * (lo + r() * (hi - lo))
-        const x = hill.x + Math.cos(a) * d
-        const z = hill.z + Math.sin(a) * d
-        if (placed.some((p) => Math.hypot(p.x - x, p.z - z) < (p.s + size) * 1.35)) continue
-        const spot = { x, z, s: size }
-        placed.push(spot)
-        return spot
+        const x = hill.x + Math.cos(a) * d, z = hill.z + Math.sin(a) * d
+        if (placed.some((p) => Math.hypot(p.x - x, p.z - z) < (p.s + s) * 1.3)) continue
+        placed.push({ x, z, s })
+        return { x, z, s, rot: a + Math.PI / 2 }
       }
       return null
     }
-    const groundUnder = (x: number, z: number, w: number, d: number) => Math.min(...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => heightAt(x + i * w, z + j * d, hills))) - 0.05
-    const box = (x: number, z: number, w: number, d: number, h: number, roof: THREE.Color, rot: number) => {
-      const base = groundUnder(x, z, w, d)
-      const c = Math.cos(rot), sn = Math.sin(rot)
-      const P = (i: number, k: number, y: number) => [x + (i * w * c - k * d * sn), y, z + (i * w * sn + k * d * c)]
-      const b = [P(-1, -1, base), P(1, -1, base), P(1, 1, base), P(-1, 1, base)]
-      const t = [P(-1, -1, base + h), P(1, -1, base + h), P(1, 1, base + h), P(-1, 1, base + h)]
-      const quad = (q: number[][], color: THREE.Color) => {
-        for (const i of [0, 1, 2, 0, 2, 3]) {
-          pos.push(...q[i])
-          col.push(color.r, color.g, color.b)
-        }
-      }
-      quad(t, roof)
-      for (let i = 0; i < 4; i++) {
-        const j = (i + 1) % 4
-        quad([b[i], b[j], t[j], t[i]], i % 2 ? SIDE_A : SIDE_B)
-        edges.push(...t[i], ...t[j], ...b[i], ...t[i])
-      }
-      return base + h
+
+    // the apps, on the upper terraces, in the world's own architecture
+    for (const app of input.apps) {
+      const site = find(0.12, 0.5, 1.45)
+      if (!site) continue
+      const top = signature(input.template, b, g, site, true, r, 'roof')
+      this.anchors.push({ key: app.key, kind: 'app', x: site.x, y: top, z: site.z })
     }
 
-    // the apps, on the upper terraces
-    input.apps.forEach((app) => {
-      const s = 1.1 + r() * 0.45
-      const spot = find(0.12, 0.5, s)
-      if (!spot) return
-      const top = box(spot.x, spot.z, s, s * (0.75 + r() * 0.3), 2 + r() * 1.6, ROOF, r() * Math.PI)
-      this.anchors.push({ key: app.key, kind: 'app', x: spot.x, y: top, z: spot.z })
-    })
-
-    // the open jobs, as construction sites further down
-    input.jobs.forEach((job) => {
-      const s = 1.1
-      const spot = find(0.45, 0.82, s)
-      if (!spot) return
-      const base = groundUnder(spot.x, spot.z, s, s)
-      const rot = r() * Math.PI
-      const c = Math.cos(rot), sn = Math.sin(rot)
-      const P = (i: number, k: number, y: number) => [spot.x + (i * s * c - k * s * sn), y, spot.z + (i * s * sn + k * s * c)]
-      // the slab
-      const slab = [P(-1.2, -1.2, base + 0.12), P(1.2, -1.2, base + 0.12), P(1.2, 1.2, base + 0.12), P(-1.2, 1.2, base + 0.12)]
-      for (const i of [0, 1, 2, 0, 2, 3]) {
-        pos.push(...slab[i])
-        col.push(SLAB.r, SLAB.g, SLAB.b)
-      }
-      // the scaffold: a dashed frame and a cross brace on each face
+    // open jobs: a slab and a dashed scaffold
+    for (const job of input.jobs) {
+      const site = find(0.45, 0.82, 1.15)
+      if (!site) continue
+      const f = { x: site.x, z: site.z, rot: site.rot }
+      const s = 0.95
+      const y = footing(g, f, s, s)
+      b.at(y)
+      const c = Math.cos(f.rot), sn = Math.sin(f.rot)
+      const P = (i: number, k: number, h: number) => [f.x + (i * c - k * sn), h, f.z + (i * sn + k * c)]
+      const k = 1.2
+      b.quad(P(-k, -k, y + 0.1), P(k, -k, y + 0.1), P(k, k, y + 0.1), P(-k, k, y + 0.1), 'canvas')
       const h = 2.2
-      const b = [P(-1, -1, base), P(1, -1, base), P(1, 1, base), P(-1, 1, base)]
-      const t = [P(-1, -1, base + h), P(1, -1, base + h), P(1, 1, base + h), P(-1, 1, base + h)]
+      const lo = [P(-s, -s, y), P(s, -s, y), P(s, s, y), P(-s, s, y)]
+      const hi = [P(-s, -s, y + h), P(s, -s, y + h), P(s, s, y + h), P(-s, s, y + h)]
+      const mid = lo.map((p) => [p[0], p[1] + h / 2, p[2]])
       for (let i = 0; i < 4; i++) {
         const j = (i + 1) % 4
-        dashes.push(...b[i], ...t[i], ...t[i], ...t[j], ...b[i], ...t[j])
+        b.dash(lo[i], hi[i])
+        b.dash(hi[i], hi[j])
+        b.dash(mid[i], mid[j])
+        b.dash(lo[i], hi[j])
       }
-      this.anchors.push({ key: job.key, kind: 'job', x: spot.x, y: base + h, z: spot.z })
-    })
+      this.anchors.push({ key: job.key, kind: 'job', x: site.x, y: y + h, z: site.z })
+    }
 
     if (input.seed) {
-      // a seed: the stake at the top and a small site office
-      const top = heightAt(hill.x, hill.z, hills)
-      dashes.push(hill.x, top, hill.z, hill.x, top + 2.6, hill.z)
-      const spot = find(0.2, 0.5, 0.8)
-      if (spot) box(spot.x, spot.z, 0.8, 0.6, 0.9, TOP, r() * Math.PI)
+      const top = g(hill.x, hill.z)
+      b.at(top)
+      pole(b, hill.x, hill.z, top, 2.6)
+      const site = find(0.2, 0.5, 0.8)
+      if (site) {
+        const y = footing(g, site, 0.7, 0.5)
+        b.at(y)
+        tent(b, site, y, 0.7, 0.5, 0.8)
+      }
     }
 
-    // houses fill the terraces
     const houses = input.seed ? 2 : 6 + input.apps.length * 3
     for (let i = 0; i < houses; i++) {
-      const s = 0.45 + r() * 0.35
-      const spot = find(0.1, 0.85, s)
-      if (spot) box(spot.x, spot.z, s, s * (0.7 + r() * 0.4), 0.5 + r() * 0.9, TOP, r() * Math.PI)
+      const site = find(0.1, 0.85, 0.45 + r() * 0.3)
+      if (site) house(input.template, b, g, site, r)
     }
 
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
-    this.group.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })))
-    const eg = new THREE.BufferGeometry()
-    eg.setAttribute('position', new THREE.Float32BufferAttribute(edges, 3))
-    this.group.add(new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.7 })))
-    if (dashes.length) {
-      const dg = new THREE.BufferGeometry()
-      dg.setAttribute('position', new THREE.Float32BufferAttribute(dashes, 3))
-      const dl = new THREE.LineSegments(dg, new THREE.LineDashedMaterial({ color: INK, dashSize: 0.22, gapSize: 0.16, transparent: true, opacity: 0.8 }))
-      dl.computeLineDistances()
-      this.group.add(dl)
-    }
+    this.group = b.build(shared)
 
     // agents walk between the places where work happens
     this.stops = this.anchors.length >= 2 ? this.anchors.map((a) => ({ x: a.x, z: a.z })) : placed.slice(0, 4).map((p) => ({ x: p.x, z: p.z }))
@@ -176,15 +129,23 @@ export class District {
     }
     const pg = new THREE.BufferGeometry()
     pg.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(Math.max(1, n) * 3), 3))
-    const colors = new Float32Array(Math.max(1, n) * 3)
-    for (let i = 0; i < n; i++) {
-      const c = i % 3 === 0 ? INK : new THREE.Color('#3f6b00')
-      colors.set([c.r, c.g, c.b], i * 3)
-    }
-    pg.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+    pg.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(Math.max(1, n) * 3), 3))
     this.points = new THREE.Points(pg, new THREE.PointsMaterial({ size: 0.7, vertexColors: true, sizeAttenuation: true, transparent: true, depthWrite: false }))
     this.group.add(this.points)
+    this.setNight(0)
     this.step(0)
+  }
+
+  /** the agents carry little lights after dark */
+  setNight(k: number) {
+    if (Math.abs(k - this.night) < 0.01) return
+    this.night = k
+    const col = this.points.geometry.getAttribute('color') as THREE.BufferAttribute
+    for (let i = 0; i < this.agents.length; i++) {
+      const c = AGENT_DAY[i % 3 === 0 ? 0 : 1].clone().lerp(AGENT_NIGHT[i % 3 === 0 ? 0 : 1], k)
+      col.setXYZ(i, c.r, c.g, c.b)
+    }
+    col.needsUpdate = true
   }
 
   /** move the agents along; returns whether anything is walking */
@@ -215,14 +176,8 @@ export class District {
   }
 
   setOpacity(o: number) {
-    this.group.visible = o > 0.01
-    this.group.traverse((n) => {
-      const m = (n as THREE.Mesh).material as THREE.Material | undefined
-      if (!m) return
-      m.transparent = true
-      const base = (m.userData.base ??= m.opacity)
-      m.opacity = base * o
-    })
+    setLook(this.group, 0.4 + 0.6 * o, o)
+    ;(this.points.material as THREE.PointsMaterial).opacity = o
   }
 
   /** a spot for a proof ping: one of its buildings */

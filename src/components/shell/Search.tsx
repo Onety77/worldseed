@@ -68,7 +68,7 @@ export function SearchPalette() {
       ? jobs
           .filter((x) => x.status !== 'paid' && (word.test(x.title) || word.test(x.category)))
           .slice(0, 4)
-          .map((x) => ({ id: `j-${x.id}`, group: 'Jobs', title: x.title, note: `${usd(x.escrowUsd)} in escrow · ${worlds.find((y) => y.id === x.worldId)?.name ?? ''}`, href: `/w/${x.worldId}#work`, worldId: x.worldId }))
+          .map((x) => ({ id: `j-${x.id}`, group: 'Jobs', title: x.title, note: `${usd(x.escrowUsd)} in escrow · ${worlds.find((y) => y.id === x.worldId)?.name ?? ''}`, href: `/j/${x.id}`, worldId: x.worldId }))
       : []
     const p: Hit[] = t.length > 2
       ? ev

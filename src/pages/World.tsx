@@ -81,7 +81,7 @@ function Dossier({ w }: { w: World }) {
   return (
     <>
     <StepInside w={w} inside={inside} onToggle={() => setInside((v) => !v)} />
-    <DistrictTags w={w} inside={inside} onJob={() => choose('work')} />
+    <DistrictTags w={w} inside={inside} onJob={(id) => nav(`/j/${id}`)} />
     <Panel label={`${w.name} dossier`} width="lg" rest={0.52}>
       <Header w={w} onTrade={() => choose('trade')} />
       <div className="sticky top-6 z-[6] border-y border-line bg-panel/95 backdrop-blur-md lg:top-0">

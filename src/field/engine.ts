@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import { CONTOUR, GLSL, INDEX_EVERY, MAX_HILLS, heightAt, type Hill } from './height'
-import { buildSettlement, disposeGroup, setOpacity } from './settlement'
+import { buildSettlement, disposeGroup, type SettlementInput } from './settlement'
+import { setLook, type Shared } from './kit'
+import { Life } from './life'
 import { District, type Anchor, type DistrictInput } from './district'
 
 /*
@@ -14,8 +16,10 @@ export interface FieldWorld {
   hill: Hill
   /** dimmed by a filter */
   muted: boolean
-  /** apps it has deployed: one small block each on its hill */
-  built: number
+  /** what stands on its hill */
+  town: Omit<SettlementInput, 'id'>
+  /** 0 fine … 1 a missed milestone: its terraces dim and its contours redden */
+  trouble: number
 }
 
 export type View =
@@ -35,14 +39,39 @@ export interface Projected {
   visible: boolean
 }
 
-const PAPER = new THREE.Color('#eceee8')
-const HAZE = new THREE.Color('#e4e8e3')
-const VALLEY = new THREE.Color('#d2d8cf')
-const PEAK = new THREE.Color('#f7f8f3')
-const INK = new THREE.Color('#141813')
+// the Field's two palettes: survey paper by day, ink-blue by night
+const DAY = {
+  paper: new THREE.Color('#eceee8'),
+  haze: new THREE.Color('#e4e8e3'),
+  valley: new THREE.Color('#d2d8cf'),
+  peak: new THREE.Color('#f7f8f3'),
+  ink: new THREE.Color('#141813'),
+  green: new THREE.Color('#3f6b00'),
+  water: new THREE.Color('#cddadb'),
+  red: new THREE.Color('#b8361c'),
+}
+const NIGHT = {
+  paper: new THREE.Color('#566874'),
+  haze: new THREE.Color('#0d1419'),
+  valley: new THREE.Color('#2b3a44'),
+  peak: new THREE.Color('#71858f'),
+  ink: new THREE.Color('#e4ece2'),
+  green: new THREE.Color('#c4ef3a'),
+  water: new THREE.Color('#0b151c'),
+  red: new THREE.Color('#ff8a6b'),
+}
 const SPROUT = new THREE.Color('#c4ef3a')
-const GREEN = new THREE.Color('#3f6b00')
-const WATER = new THREE.Color('#cddadb')
+const PAL = {
+  paper: DAY.paper.clone(),
+  haze: DAY.haze.clone(),
+  valley: DAY.valley.clone(),
+  peak: DAY.peak.clone(),
+  ink: DAY.ink.clone(),
+  green: DAY.green.clone(),
+  water: DAY.water.clone(),
+  red: DAY.red.clone(),
+}
+const PAPER = PAL.paper, HAZE = PAL.haze, VALLEY = PAL.valley, PEAK = PAL.peak, INK = PAL.ink, GREEN = PAL.green, WATER = PAL.water
 
 const terrainVS = (hq: boolean) => /* glsl */ `
 ${GLSL}
@@ -78,6 +107,10 @@ const terrainFS = (hq: boolean) => /* glsl */ `
 ${hq ? GLSL : ''}
 uniform vec3 uPaper, uValley, uPeak, uInk, uSprout, uGreen, uWater, uHaze;
 uniform float uT;
+uniform float uNight;
+uniform float uGlow[${MAX_HILLS}];
+uniform float uTrouble[${MAX_HILLS}];
+uniform vec3 uRed;
 uniform vec4 uHill[${MAX_HILLS}];
 uniform vec4 uMeta[${MAX_HILLS}];
 uniform int uCount;
@@ -87,6 +120,16 @@ varying float vH;
 varying vec3 vN;
 varying vec2 vP;
 varying float vDist;
+float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3. - 2. * f);
+  return mix(mix(h2(i), h2(i + vec2(1., 0.)), u.x), mix(h2(i + vec2(0., 1.)), h2(i + 1.), u.x), u.y);
+}
+// soft cloud shadows drifting slowly across the Field by day
+float cloud(vec2 p, float t) {
+  return smoothstep(.56, .86, vn(p * .045 + t * vec2(.05, .02)) * .65 + vn(p * .11 - t * vec2(.03, .04)) * .35);
+}
 float lineAt(float v, float width) {
   float w = max(fwidth(v), 1e-4);
   return 1. - smoothstep(0., w * width, abs(fract(v - .5) - .5));
@@ -119,6 +162,8 @@ void main() {
   // worlds: a focused one fills with sprout and its contours turn green; muted ones fade
   float green = 0.;
   float muted = 0.;
+  float glow = 0.;
+  float trouble = 0.;
   for (int i = 0; i < ${MAX_HILLS}; i++) {
     if (i >= uCount) break;
     vec4 h = uHill[i];
@@ -127,23 +172,37 @@ void main() {
     float inside = 1. - smoothstep(.92, 1.08, t);
     green = max(green, inside * m.z);
     muted = max(muted, inside * m.w);
+    // after dark, a busy town lights the ground around it
+    glow += uGlow[i] * exp(-t * t * 1.6) * (1. - m.w * .8);
+    trouble = max(trouble, inside * uTrouble[i]);
   }
-  col = mix(col, uSprout, green * .24);
+  col = mix(col, uSprout, green * .24 * (1. - uNight * .55));
+  col += vec3(1., .86, .62) * min(glow, 1.) * uNight * .1;
+  col *= 1. - cloud(vP, uT) * .075 * (1. - uNight);
+  // a world in trouble: its terraces go grey and dim
+  col = mix(col, vec3(dot(col, vec3(.333))) * .9, trouble * .55);
   ink *= 1. - muted * .55;
 
   // evidence pings: a ring of green runs out from the world that published it
+  // (a negative scale is bad news: the ring runs red)
   float ring = 0.;
+  float bad = 0.;
   for (int i = 0; i < 8; i++) {
     vec4 pg = uPing[i];
-    if (pg.w <= 0.) continue;
+    if (pg.w == 0.) continue;
+    float sc = abs(pg.w);
     float d = length(vP - pg.xy);
-    float r = pg.z * 7. * pg.w;
-    ring = max(ring, exp(-pow((d - r) / (.4 * pg.w), 2.)) * smoothstep(.08, .3, pg.z) * (1. - smoothstep(.4, 1.7, pg.z)));
+    float r = pg.z * 7. * sc;
+    float v = exp(-pow((d - r) / (.4 * sc), 2.)) * smoothstep(.08, .3, pg.z) * (1. - smoothstep(.4, 1.7 + (sc - 1.) * .4, pg.z));
+    if (pg.w < 0.) bad = max(bad, v);
+    else ring = max(ring, v);
   }
 
   vec3 lineCol = mix(uInk, uGreen, max(green, ring));
+  lineCol = mix(lineCol, uRed, max(bad, trouble * .5));
   col = mix(col, uSprout, ring * .5);
-  col = mix(col, lineCol, clamp(ink + ring * .35, 0., 1.));
+  col = mix(col, uRed, bad * .25);
+  col = mix(col, lineCol, clamp(ink + (ring + bad) * .35, 0., 1.));
   float fog = smoothstep(uFog.x, uFog.y, vDist);
   gl_FragColor = vec4(mix(col, uHaze, fog), 1.);
 }`
@@ -163,8 +222,19 @@ const waterFS = /* glsl */ `
 uniform vec3 uWater, uInk, uHaze;
 uniform vec2 uFog;
 uniform float uT;
+uniform float uNight;
 varying vec2 vP;
 varying vec3 vView;
+float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3. - 2. * f);
+  return mix(mix(h2(i), h2(i + vec2(1., 0.)), u.x), mix(h2(i + vec2(0., 1.)), h2(i + 1.), u.x), u.y);
+}
+// soft cloud shadows drifting slowly across the Field by day
+float cloud(vec2 p, float t) {
+  return smoothstep(.56, .86, vn(p * .045 + t * vec2(.05, .02)) * .65 + vn(p * .11 - t * vec2(.03, .04)) * .35);
+}
 void main() {
   float vDist = length(vView);
   // cartographic water: fine horizontal hatching that drifts very slowly
@@ -172,6 +242,7 @@ void main() {
   float fw = max(fwidth(v), 1e-4);
   float line = (1. - smoothstep(0., fw * .7, abs(fract(v - .5) - .5))) * (1. - smoothstep(.25, .6, fw));
   vec3 col = mix(uWater * .96, uInk, line * .07);
+  col *= 1. - cloud(vP, uT) * .06 * (1. - uNight);
   float fog = smoothstep(uFog.x, uFog.y, vDist);
   gl_FragColor = vec4(mix(col, uHaze, fog), 1.);
 }`
@@ -195,10 +266,18 @@ export class FieldEngine {
   private water: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>
   private bridges = new THREE.Group()
   private towns = new THREE.Group()
-  private settlements = new Map<string, { key: string; group: THREE.Group }>()
+  private settlements = new Map<string, { key: string; group: THREE.Group; rise: number }>()
+  /** uniforms every building shares: the night, the haze, the fog */
+  private shared!: Shared
+  private night = { k: 0, goal: 0 }
+  private life!: Life
+  private routesShown = 1
   private worlds: FieldWorld[] = []
   /** what each hill currently looks like, easing toward its target */
-  private shown = new Map<string, Hill & { green: number; muted: number }>()
+  private shown = new Map<string, Hill & { green: number; muted: number; trouble: number }>()
+  /** worlds earning their chain right now: id → when it began */
+  private ceremonies = new Map<string, number>()
+  private lastMoat = new Map<string, number>()
   private focus: string | null = null
   private hover: string | null = null
   private pings: { x: number; z: number; at: number; scale: number }[] = []
@@ -245,6 +324,7 @@ export class FieldEngine {
       uWater: { value: WATER },
       uT: { value: 0 },
     }
+    this.shared = { uNight: { value: 0 }, uHaze: common.uHaze, uFog: common.uFog }
     const seg = quality === 'high' ? 360 : 180
     const geo = new THREE.PlaneGeometry(200, 200, seg, seg)
     geo.rotateX(-Math.PI / 2)
@@ -263,6 +343,10 @@ export class FieldEngine {
           uMeta: { value: Array.from({ length: MAX_HILLS }, () => new THREE.Vector4()) },
           uCount: { value: 0 },
           uPing: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
+          uGlow: { value: new Array(MAX_HILLS).fill(0) },
+          uTrouble: { value: new Array(MAX_HILLS).fill(0) },
+          uRed: { value: PAL.red },
+          uNight: this.shared.uNight,
         },
       }),
     )
@@ -270,16 +354,37 @@ export class FieldEngine {
     wgeo.rotateX(-Math.PI / 2)
     this.water = new THREE.Mesh(
       wgeo,
-      new THREE.ShaderMaterial({ vertexShader: waterVS, fragmentShader: waterFS, uniforms: common }),
+      new THREE.ShaderMaterial({ vertexShader: waterVS, fragmentShader: waterFS, uniforms: { ...common, uNight: this.shared.uNight } }),
     )
     this.water.position.y = -0.05
-    this.scene.add(this.water, this.terrain, this.bridges, this.towns)
+    this.life = new Life(this.shared)
+    this.scene.add(this.water, this.terrain, this.bridges, this.towns, this.life.group)
     this.scene.fog = new THREE.Fog(HAZE, 130, 330)
     this.bindInput()
     this.resize()
   }
 
   // ── what to show ──
+
+  /** day or night on the Field; it crossfades over a couple of seconds */
+  setNight(on: boolean, instant = false) {
+    this.night.goal = on ? 1 : 0
+    if (instant || this.reduced) {
+      this.night.k = this.night.goal
+      this.applyNight()
+    }
+    this.wake()
+  }
+
+  private applyNight() {
+    const k = this.night.k
+    for (const key of Object.keys(PAL) as (keyof typeof PAL)[]) PAL[key].copy(DAY[key]).lerp(NIGHT[key], k)
+    this.renderer.setClearColor(PAL.haze)
+    ;(this.scene.fog as THREE.Fog).color.copy(PAL.haze)
+    this.shared.uNight.value = k
+    this.bridges.children.forEach((l) => ((l as THREE.Line).material as THREE.LineDashedMaterial).color.copy(PAL.ink))
+    this.district?.d.setNight(k)
+  }
 
   /** honour reduced motion: no drift, cuts instead of camera moves */
   setReduced(on: boolean) {
@@ -290,9 +395,18 @@ export class FieldEngine {
   setWorlds(list: FieldWorld[]) {
     this.worlds = list.slice(0, MAX_HILLS)
     for (const w of this.worlds) {
-      if (!this.shown.has(w.id)) this.shown.set(w.id, { ...w.hill, height: 0, moat: w.hill.moat > 0.5 && !this.reduced ? 0 : w.hill.moat, green: 0, muted: 0 })
+      if (!this.shown.has(w.id)) this.shown.set(w.id, { ...w.hill, height: 0, moat: w.hill.moat > 0.5 && !this.reduced ? 0 : w.hill.moat, green: 0, muted: 0, trouble: w.trouble })
+      // a world that just earned its chain: begin its ceremony
+      const was = this.lastMoat.get(w.id)
+      if (was !== undefined && was < 0.5 && w.hill.moat >= 0.5) {
+        this.ceremonies.set(w.id, performance.now())
+        this.ping(w.id, 'big')
+      }
+      this.lastMoat.set(w.id, w.hill.moat)
     }
     this.syncSettlements()
+    const real = this.worlds.filter((w) => w.id !== 'draft')
+    this.life.build(real.map((w) => ({ id: w.id, hill: w.hill, stage: w.town.seed ? 'seed' : w.hill.moat > 0.5 ? 'sovereign' : 'realm' })))
     this.wake()
   }
 
@@ -361,7 +475,8 @@ export class FieldEngine {
     }
     const w = input && this.worlds.find((x) => x.id === input.id)
     if (input && w) {
-      const d = new District(input, w.hill, this.worlds.map((x) => x.hill))
+      const d = new District(input, w.hill, this.worlds.map((x) => x.hill), this.shared)
+      d.setNight(this.night.k)
       d.setOpacity(0)
       this.towns.add(d.group)
       this.district = { input, d, shown: 0 }
@@ -440,12 +555,20 @@ export class FieldEngine {
     }
   }
 
-  ping(id: string) {
+  /** a trade or a job at this world: packets run down its roads */
+  pulse(id: string) {
+    this.life.pulse(id)
+    this.wake()
+  }
+
+  /** a ring runs out from a world: a proof (green), a big moment (wide), or bad news (red) */
+  ping(id: string, kind: 'proof' | 'big' | 'bad' = 'proof') {
     const w = this.worlds.find((x) => x.id === id)
     if (!w) return
-    const inside = this.district && this.view.kind === 'district' && this.view.id === id
+    const inside = this.district && this.view.kind === 'district' && this.view.id === id && kind === 'proof'
     const at = inside ? this.district!.d.pingSpot() : { x: w.hill.x, z: w.hill.z }
-    this.pings = [...this.pings.slice(-7), { ...at, at: performance.now(), scale: inside ? 0.32 : 1 }]
+    const scale = inside ? 0.32 : kind === 'big' ? 2.4 : kind === 'bad' ? -1.4 : 1
+    this.pings = [...this.pings.slice(-7), { ...at, at: performance.now(), scale }]
     this.wake()
   }
 
@@ -501,6 +624,7 @@ export class FieldEngine {
     this.water.material.dispose()
     this.settlements.forEach((st) => disposeGroup(st.group))
     this.district?.d.dispose()
+    this.life.dispose()
     this.renderer.dispose()
     this.canvas.remove()
   }
@@ -518,17 +642,20 @@ export class FieldEngine {
     }
     const r = (n: number) => n.toFixed(1)
     for (const w of this.worlds) {
-      const key = [r(w.hill.radius), r(w.hill.height), w.hill.tiers, w.hill.moat, w.built].join()
+      const t = w.town
+      const key = [r(w.hill.radius), r(w.hill.height), w.hill.tiers, w.hill.moat, t.template, t.apps, t.houses, t.seed, r(t.lit)].join()
       const prev = this.settlements.get(w.id)
       if (prev?.key === key) continue
       if (prev) {
         this.towns.remove(prev.group)
         disposeGroup(prev.group)
       }
-      const group = buildSettlement(w.id, w.hill, targets, w.built)
-      setOpacity(group, 0)
+      const group = buildSettlement({ id: w.id, ...t }, w.hill, targets, this.shared)
+      // a world that already stood keeps standing; new building rises from the ground
+      const rise = prev ? prev.rise : 0
+      setLook(group, rise, 0)
       this.towns.add(group)
-      this.settlements.set(w.id, { key, group })
+      this.settlements.set(w.id, { key, group, rise: prev && prev.key.split(',').slice(4).join() === key.split(',').slice(4).join() ? prev.rise : prev ? 0.35 : 0 })
     }
   }
 
@@ -582,15 +709,27 @@ export class FieldEngine {
     this.worlds.forEach((w, i) => {
       const s = this.shown.get(w.id)!
       const green = w.id === this.focus ? 1 : w.id === this.hover ? 0.55 : 0
-      const target = { height: w.hill.height, radius: w.hill.radius, tiers: w.hill.tiers, moat: w.hill.moat, green, muted: w.muted ? 1 : 0 }
+      const target = { height: w.hill.height, radius: w.hill.radius, tiers: w.hill.tiers, moat: w.hill.moat, green, muted: w.muted ? 1 : 0, trouble: w.trouble }
+      const ceremony = this.ceremonies.has(w.id)
       for (const key of Object.keys(target) as (keyof typeof target)[]) {
-        // growth is unhurried; the moat opens slower still
-        const speed = key === 'moat' ? 1 - Math.pow(0.5, dt) : key === 'height' ? 1 - Math.pow(0.25 + (i % 5) * 0.05, dt) : g
+        // growth is unhurried; the moat opens slower still, slowest of all during a ceremony
+        const speed = key === 'moat' ? 1 - Math.pow(ceremony ? 0.74 : 0.5, dt) : key === 'trouble' ? 1 - Math.pow(0.6, dt) : key === 'height' ? 1 - Math.pow(0.25 + (i % 5) * 0.05, dt) : g
         const next = this.reduced ? target[key] : lerp(s[key], target[key], speed)
-        if (Math.abs(next - target[key]) > 0.002) moving = true
-        s[key] = next
+        // settle exactly on the target, so what waits on "fully grown" gets there
+        if (Math.abs(next - target[key]) > 0.002) {
+          moving = true
+          s[key] = next
+        } else s[key] = target[key]
       }
     })
+
+    // day and night crossfade
+    if (this.night.k !== this.night.goal) {
+      const n = this.reduced ? this.night.goal : lerp(this.night.k, this.night.goal, 1 - Math.pow(0.08, dt))
+      this.night.k = Math.abs(n - this.night.goal) < 0.003 ? this.night.goal : n
+      this.applyNight()
+      moving = true
+    }
 
     // uniforms
     const u = this.terrain.material.uniforms
@@ -599,6 +738,10 @@ export class FieldEngine {
       const s = this.shown.get(w.id)!
       u.uHill.value[i].set(w.hill.x, w.hill.z, s.radius, s.height)
       u.uMeta.value[i].set(s.tiers, s.moat, s.green, s.muted)
+      u.uGlow.value[i] = w.town.seed ? 0.15 : 0.3 + w.town.lit * 0.7
+      u.uTrouble.value[i] = s.trouble
+      const c = this.ceremonies.get(w.id)
+      if (c !== undefined && now - c > 12_000) this.ceremonies.delete(w.id)
     })
     // settlements appear once their hill has grown into place
     for (const w of this.worlds) {
@@ -607,7 +750,13 @@ export class FieldEngine {
       if (!st) continue
       const grown = Math.min(1, Math.max(0, (s.height / Math.max(w.hill.height, 0.01) - 0.9) / 0.1))
       const replaced = this.district?.input.id === w.id ? this.district.shown : 0
-      setOpacity(st.group, grown * (1 - s.muted * 0.75) * (1 - replaced))
+      // buildings rise out of the ground once the hill is up, then stay
+      if (grown >= 0.97 && st.rise < 1) {
+        st.rise = this.reduced ? 1 : Math.min(1, st.rise + dt * 0.7)
+        moving = true
+      }
+      const e = 1 - Math.pow(1 - st.rise, 3)
+      setLook(st.group, e, (1 - s.muted * 0.75) * (1 - replaced) * Math.min(1, st.rise * 3))
     }
     // inside a world: its district fades in over the plain settlement, and its agents walk
     if (this.district) {
@@ -620,7 +769,13 @@ export class FieldEngine {
       if (dd.shown > 0 && !this.reduced && dd.d.step(dt)) moving = true
     }
 
-    this.pings = this.pings.filter((p) => now - p.at < 2400)
+    // woods, boats and roads
+    const roadsWanted = this.view.kind === 'atlas' || this.view.kind === 'coast' ? 1 : this.view.kind === 'world' ? 0.3 : 0
+    this.routesShown = this.reduced ? roadsWanted : lerp(this.routesShown, roadsWanted, 1 - Math.pow(0.05, dt))
+    this.life.setLook(1, this.routesShown)
+    if (!this.reduced && this.life.step(dt)) moving = true
+
+    this.pings = this.pings.filter((p) => now - p.at < (Math.abs(p.scale) > 1.2 ? 3600 : 2400))
     for (let i = 0; i < 8; i++) {
       const p = this.pings[i]
       if (p) u.uPing.value[i].set(p.x, p.z, (now - p.at) / 1000, p.scale)
@@ -681,8 +836,11 @@ export class FieldEngine {
         pts.push(new THREE.Vector3(x, Math.max(0.15, heightAt(x, z, hills) + 0.15), z))
       }
       const geo = new THREE.BufferGeometry().setFromPoints(pts)
-      const line = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: INK, dashSize: 0.6, gapSize: 0.45, transparent: true, opacity: 0.7 * Math.min(1, (s.moat - 0.3) / 0.5) }))
+      const k = Math.min(1, (s.moat - 0.3) / 0.6)
+      const line = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: INK, dashSize: 0.6, gapSize: 0.45, transparent: true, opacity: 0.7 * Math.min(1, k * 1.5) }))
       line.computeLineDistances()
+      // the bridge draws itself out from the island as the water opens
+      geo.setDrawRange(0, Math.max(2, Math.ceil(pts.length * k)))
       this.bridges.add(line)
     }
   }
@@ -709,8 +867,9 @@ export class FieldEngine {
     // ground units per pixel at the target: the view's height there, over the screen's height
     const s = (this.cam.dist * 2 * Math.tan((this.camera.fov * Math.PI) / 360)) / this.size.h
     const ca = Math.cos(this.goal.az), sa = Math.sin(this.goal.az)
-    const mx = -(dx * ca - dy * sa * 1.4) * s
-    const mz = -(-dx * sa - dy * ca * 1.4) * s
+    // grab the ground: it follows the finger both ways (far ground tilts away, so vertical moves cover more)
+    const mx = (-dx * ca - dy * sa * 1.4) * s
+    const mz = (dx * sa - dy * ca * 1.4) * s
     this.goal.tx = Math.max(-60, Math.min(60, this.goal.tx + mx))
     this.goal.tz = Math.max(-60, Math.min(60, this.goal.tz + mz))
     return { mx, mz }

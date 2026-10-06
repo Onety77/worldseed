@@ -42,6 +42,36 @@
   --red: #b8361c;
   --red-soft: rgb(226 70 42 / 0.12);
   --on-red: #ffffff;
+  --scrim: rgb(20 24 19 / 0.25);
+}
+
+/*
+  Night: the same survey sheet after dark. Ink-blue paper, light ink, sprout unchanged
+  (still a fill with dark ink on it). Chosen with the moon button, or by the host page.
+  Checked: ink-3 6.1:1 on panel; green text 9:1; vermilion 6.4:1.
+*/
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #0f1519;
+  --panel: #151c21;
+  --raised: #1c252b;
+  --valley: #182026;
+  --water: #13222b;
+  --hover: rgb(232 236 228 / 0.05);
+  --line: rgb(232 236 228 / 0.1);
+  --line-2: rgb(232 236 228 / 0.18);
+  --ink: #e8ece4;
+  --ink-2: rgb(232 236 228 / 0.76);
+  --ink-3: rgb(232 236 228 / 0.6);
+  --ink-4: rgb(232 236 228 / 0.26);
+  --sprout: #c4ef3a;
+  --sprout-soft: rgb(196 239 58 / 0.14);
+  --on-sprout: #141813;
+  --green: #b9e33a;
+  --red: #ff8a6b;
+  --red-soft: rgb(255 120 90 / 0.14);
+  --on-red: #141813;
+  --scrim: rgb(4 8 10 / 0.5);
 }
 
 @theme inline {
@@ -64,6 +94,7 @@
   --color-red: var(--red);
   --color-red-soft: var(--red-soft);
   --color-on-red: var(--on-red);
+  --color-scrim: var(--scrim);
 }
 
 @theme {
@@ -114,6 +145,20 @@
   box-shadow: 0 0 0 1px var(--line), 0 18px 50px -30px rgb(20 24 19 / 0.45);
 }
 
+/*
+  An ink card: dark with light text in both themes. By day it is simply ink; by night the
+  tokens swap back inside it so it stays a dark, quiet surface instead of a white block.
+*/
+@utility ink-card {
+  background: var(--ink);
+  color: var(--paper);
+}
+:root[data-theme="dark"] .ink-card {
+  --ink: #222c33;
+  --paper: #e8ece4;
+  box-shadow: inset 0 0 0 1px rgb(232 236 228 / 0.1);
+}
+
 @utility no-scrollbar {
   scrollbar-width: none;
   &::-webkit-scrollbar { display: none; }
@@ -125,6 +170,7 @@
 */
 html, body {
   background: var(--paper);
+  transition: background-color 0.6s ease;
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 16px;
@@ -156,11 +202,15 @@ body { margin: 0; min-height: 100svh; overflow-x: clip; }
 @keyframes ping { 0% { transform: scale(1); opacity: 0.55; } 80%, 100% { transform: scale(2.8); opacity: 0; } }
 .ping::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; animation: ping 2.6s cubic-bezier(0, 0, 0.2, 1) infinite; }
 
+/* a world that just earned its chain: its tag arrives with a single soft swell */
+@keyframes fresh-chain { 0% { transform: translateX(-50%) scale(0.9); box-shadow: 0 0 0 0 rgb(196 239 58 / 0.6); } 60% { transform: translateX(-50%) scale(1.04); box-shadow: 0 0 0 10px rgb(196 239 58 / 0); } 100% { transform: translateX(-50%) scale(1); } }
+.fresh-chain { animation: fresh-chain 1.4s cubic-bezier(0.16, 1, 0.3, 1) 1; }
+
 @keyframes fade-in { from { opacity: 0.35; transform: translateY(2px); } }
 .fade-in { animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
 
 @media (prefers-reduced-motion: reduce) {
-  .breathe, .ping::after, .fade-in { animation: none !important; }
+  .breathe, .ping::after, .fade-in, .fresh-chain { animation: none !important; }
 }
 
 @keyframes tick-up { from { color: var(--green); } }

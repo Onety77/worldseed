@@ -150,7 +150,7 @@ export function HowPage() {
           </dl>
         </Part>
 
-        <div className="mt-12 rounded-[16px] bg-ink p-6 text-paper">
+        <div className="ink-card mt-12 rounded-[16px] p-6">
           <p className="font-display text-[26px] leading-tight font-[560] tracking-[-0.02em]">Only the worlds that grow earn their own chain.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link to="/seed" className={buttonClass('primary', 'md')}>

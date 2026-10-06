@@ -22,7 +22,7 @@ export function useDistrict(w: World, inside: boolean) {
   const key = `${w.id}:${w.apps.length}:${w.stage}`
   useEffect(() => {
     if (!engine) return
-    engine.setDistrict({ id: w.id, apps: w.apps.map((a) => ({ key: a.name })), jobs: open.map((j) => ({ key: j.id })), seed: w.stage === 'seed' })
+    engine.setDistrict({ id: w.id, template: w.template, apps: w.apps.map((a) => ({ key: a.name })), jobs: open.map((j) => ({ key: j.id })), seed: w.stage === 'seed', lit: w.stage === 'sovereign' ? 1 : w.stage === 'realm' ? 0.6 : 0.3 })
     // rebuilt only when what stands there changes
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, key, open])
@@ -54,7 +54,7 @@ export function StepInside({ w, inside, onToggle }: { w: World; inside: boolean;
 }
 
 /** Tags on the buildings and sites of the open district. */
-export function DistrictTags({ w, inside, onJob }: { w: World; inside: boolean; onJob: () => void }) {
+export function DistrictTags({ w, inside, onJob }: { w: World; inside: boolean; onJob: (id: string) => void }) {
   const engine = useField()
   const refs = useRef(new Map<string, HTMLElement>())
   const [picked, setPicked] = useState<string | null>(null)
@@ -113,7 +113,7 @@ export function DistrictTags({ w, inside, onJob }: { w: World; inside: boolean; 
           })}
           {open.map((j) => (
             <div key={j.id} ref={(el) => void (el ? refs.current.set(j.id, el) : refs.current.delete(j.id))} className="absolute top-0 left-0" style={{ visibility: 'hidden' }}>
-              <button onClick={onJob} className="pointer-events-auto absolute bottom-3 left-0 flex -translate-x-1/2 items-center gap-1.5 rounded-[10px] border border-dashed border-ink/45 bg-paper/90 px-2.5 py-1.5 text-[12px] leading-none font-semibold whitespace-nowrap backdrop-blur-sm hover-device:hover:bg-raised">
+              <button onClick={() => onJob(j.id)} className="pointer-events-auto absolute bottom-3 left-0 flex -translate-x-1/2 items-center gap-1.5 rounded-[10px] border border-dashed border-ink/45 bg-paper/90 px-2.5 py-1.5 text-[12px] leading-none font-semibold whitespace-nowrap backdrop-blur-sm hover-device:hover:bg-raised">
                 {j.category}
                 <span className="font-mono text-[10.5px] font-medium text-ink-3">{usd(j.escrowUsd)}</span>
                 {mine.includes(j.id) && <span className="rounded-full bg-sprout px-1.5 text-[10px] text-on-sprout">yours</span>}

@@ -43,7 +43,7 @@ export function Dialog({ open, onClose, label, children, className, top = false 
     <AnimatePresence>
       {open && (
         <div className={cn('fixed inset-0 z-50 flex justify-center px-0 sm:px-4', top ? 'items-end sm:items-start sm:pt-[12vh]' : 'items-end sm:items-center')}>
-          <m.div className="absolute inset-0 bg-ink/25 backdrop-blur-[2px]" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} />
+          <m.div className="absolute inset-0 bg-scrim backdrop-blur-[2px]" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} />
           <m.div
             ref={box}
             role="dialog"

@@ -1,4 +1,5 @@
-import { Check } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowRight, Check } from 'lucide-react'
 import { m } from 'motion/react'
 import type { Proposal, World } from '@/lib/types'
 import { cn } from '@/lib/cn'
@@ -22,7 +23,7 @@ export function ProposalCard({ p, world }: { p: Proposal; world?: World }) {
   const vote = (v: 'for' | 'against') => {
     if (!me.connected) return connectOpen.set(true)
     votes.set((x) => ({ ...x, [p.id]: v }))
-    notify({ kind: 'vote', title: `You voted ${v}`, body: p.title, worldId: p.worldId, href: `/w/${p.worldId}#governance` })
+    notify({ kind: 'vote', title: `You voted ${v}`, body: p.title, worldId: p.worldId, href: `/p/${p.id}` })
   }
 
   return (
@@ -34,7 +35,9 @@ export function ProposalCard({ p, world }: { p: Proposal; world?: World }) {
             {world && <span className="font-semibold text-ink">{world.name}</span>}
             <span className={cn('rounded-[5px] px-1.5 py-0.5 font-mono text-[10px] tracking-wide uppercase', p.kind === 'Sovereignty' ? 'bg-sprout text-on-sprout' : p.kind === 'Governor election' ? 'bg-red-soft text-red' : 'bg-ink/[0.06]')}>{p.kind}</span>
           </p>
-          <p className="mt-1 text-[14.5px] leading-snug font-semibold">{p.title}</p>
+          <Link to={`/p/${p.id}`} className="mt-1 block text-[14.5px] leading-snug font-semibold underline-offset-4 hover-device:hover:underline">
+            {p.title}
+          </Link>
         </div>
       </div>
 
@@ -51,6 +54,9 @@ export function ProposalCard({ p, world }: { p: Proposal; world?: World }) {
         </div>
       </div>
 
+      <Link to={`/p/${p.id}`} className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-semibold text-ink-2 hover-device:hover:text-ink">
+        What changes, and the discussion <ArrowRight className="size-3.5" />
+      </Link>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-[12px] text-ink-3">
           {p.status === 'timelock' ? (

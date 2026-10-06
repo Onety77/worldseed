@@ -10,7 +10,8 @@ import { Mark } from '@/components/ui/Logo'
 import { Legend } from './Legend'
 import { InboxButton } from './Inbox'
 import { searchOpen } from './Search'
-import { Search as SearchIcon, Wallet } from 'lucide-react'
+import { Moon, Search as SearchIcon, Sun, Wallet } from 'lucide-react'
+import { toggleTheme, useTheme } from '@/lib/theme'
 import { usePortfolio } from '@/lib/wallet'
 import { usd } from '@/lib/format'
 import { connectOpen } from '@/components/wallet/Connect'
@@ -27,7 +28,8 @@ export function TopBar() {
   const box = useRef<HTMLDivElement>(null)
   useCover(box, 'top')
   const lens = lensFor(pathname)
-  const here = lens?.name ?? (pathname.startsWith('/w/') ? 'World' : pathname === '/seed' ? 'Seed a world' : pathname === '/how' ? 'How it works' : pathname === '/you' ? 'You' : 'Atlas')
+  const page: Record<string, string> = { w: 'World', p: 'Proposal', c: 'Challenge', j: 'Job' }
+  const here = lens?.name ?? page[pathname.split('/')[1]] ?? (pathname === '/seed' ? 'Seed a world' : pathname === '/how' ? 'How it works' : pathname === '/you' ? 'You' : 'Atlas')
 
   // close on navigation, outside press and Escape
   const [seen, setSeen] = useState(pathname)
@@ -96,6 +98,7 @@ export function TopBar() {
                 ))}
               </ul>
               <YouRow />
+              <ThemeRow />
               <div className="mt-1 border-t border-line px-2.5 pt-3 pb-1">
                 <Legend />
               </div>
@@ -125,5 +128,18 @@ function YouRow() {
       <span className="flex-1 text-[15px] font-semibold">You</span>
       <span className="font-mono text-[12px] tabular">{usd(me.value + me.cashUsd)}</span>
     </NavLink>
+  )
+}
+
+function ThemeRow() {
+  const theme = useTheme()
+  return (
+    <button onClick={toggleTheme} role="switch" aria-checked={theme === 'dark'} className="flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2.5 text-left hover-device:hover:bg-hover">
+      {theme === 'dark' ? <Sun className="size-[18px] text-ink-2" strokeWidth={1.8} /> : <Moon className="size-[18px] text-ink-2" strokeWidth={1.8} />}
+      <span className="flex-1 text-[15px] font-semibold">Night</span>
+      <span className={cn('relative h-5 w-9 rounded-full transition-colors', theme === 'dark' ? 'bg-sprout' : 'bg-ink/15')}>
+        <span className={cn('absolute top-0.5 size-4 rounded-full bg-raised shadow transition-[left]', theme === 'dark' ? 'left-[18px]' : 'left-0.5')} />
+      </span>
+    </button>
   )
 }
