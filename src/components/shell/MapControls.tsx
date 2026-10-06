@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
-import { Minus, Moon, Plus, Sun } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Map as MapIcon, Minus, Moon, Orbit, Plus, Sun } from 'lucide-react'
 import { toggleTheme, useTheme } from '@/lib/theme'
 import { cn } from '@/lib/cn'
 import { useDocked } from '@/lib/useMedia'
@@ -17,12 +17,15 @@ export function MapControls() {
   const { pathname } = useLocation()
   const needle = useRef<SVGGElement>(null)
   const theme = useTheme()
+  const nav = useNavigate()
+  const [space, setSpace] = useState(false)
 
   useEffect(() => {
     if (!engine) return
     return engine.onFrame(() => {
       const a = ((engine.heading() - 0.5) * 180) / Math.PI
       needle.current?.setAttribute('transform', `rotate(${a.toFixed(1)} 12 12)`)
+      setSpace(engine.inSpace())
     })
   }, [engine])
 
@@ -48,6 +51,10 @@ export function MapControls() {
             <path d="M12 19.5 9.8 12h4.4Z" fill="currentColor" fillOpacity=".55" />
           </g>
         </svg>
+      </button>
+      <span className="mx-2 h-px bg-line" />
+      <button className={btn} onClick={() => nav(space ? '/' : '/sovereignty')} aria-label={space ? 'Back down to the land' : 'Up into orbit'} title={space ? 'Back down to the land' : 'Up into orbit'}>
+        {space ? <MapIcon className="size-4" /> : <Orbit className="size-4" />}
       </button>
       <span className="mx-2 h-px bg-line" />
       <button className={btn} onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to day' : 'Switch to night'} aria-pressed={theme === 'dark'}>

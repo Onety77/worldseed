@@ -26,7 +26,7 @@ const bars = [
 
 export function SovereigntyLens() {
   useTitle('Sovereignty')
-  useFieldView({ kind: 'coast' })
+  useFieldView({ kind: 'space' })
   const detail = useCallback((w: World) => (w.stage === 'realm' ? { text: pct(readiness(w)), tone: isTroubled(w) ? ('red' as const) : readiness(w) > 0.95 ? ('green' as const) : undefined } : w.stage === 'sovereign' ? { text: 'L3' } : null), [])
   useLabels(detail)
   const worlds = useWorlds()
@@ -37,7 +37,7 @@ export function SovereigntyLens() {
     <Panel label="Sovereignty" rest={0.5}>
       <PanelHead>
         <h1 className="text-h2">Sovereignty</h1>
-        <p className="mt-1 text-[13.5px] text-ink-2">No world is given a chain. It earns one by clearing five bars, then its holders vote, then a timelock runs out.</p>
+        <p className="mt-1 text-[13.5px] text-ink-2">No world is given a chain. It earns one by clearing five bars, then its holders vote, then a timelock runs out. Then it leaves the mainland and becomes a planet of its own.</p>
       </PanelHead>
 
       <Harrow />

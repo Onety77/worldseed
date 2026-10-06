@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import { Globe2 } from 'lucide-react'
 import type { World } from '@/lib/types'
 import { cn } from '@/lib/cn'
 import { useField } from './Field'
@@ -140,6 +141,28 @@ export function Labels({ worlds, focus, detail, dim = false, hide = null, fresh 
           </div>
         )
       })}
+      {/* out in space: the home planet, where every world starts */}
+      <div
+        ref={(el) => {
+          if (el) refs.current.set('home', el)
+          else refs.current.delete('home')
+        }}
+        className="group absolute top-0 left-0 opacity-0 transition-opacity duration-(--dur-base)"
+        style={{ visibility: 'hidden' }}
+      >
+        <Link
+          to="/"
+          onMouseEnter={() => engine.setHover('home')}
+          onMouseLeave={() => engine.setHover(null)}
+          className="pointer-events-auto absolute bottom-[var(--lead)] left-0 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-raised/90 py-1 pr-2.5 pl-1.5 text-[12.5px] leading-none font-semibold whitespace-nowrap text-ink shadow-[0_0_0_1px_var(--line-2),0_6px_16px_-10px_rgb(20_24_19/0.5)] backdrop-blur-sm transition-[background-color,color] duration-(--dur-quick) group-data-hover:bg-sprout group-data-hover:text-on-sprout"
+        >
+          <Globe2 className="size-3.5" aria-hidden />
+          The mainland
+          <span className="ml-0.5 font-mono text-[10.5px] font-medium tracking-wide text-ink-3 group-data-hover:text-on-sprout/75">{worlds.filter((w) => w.stage !== 'sovereign').length} worlds</span>
+        </Link>
+        <span aria-hidden className="absolute bottom-0 left-0 h-[var(--lead)] w-px -translate-x-1/2 bg-ink/45" />
+        <span aria-hidden className="absolute -bottom-[3px] left-0 size-[6px] -translate-x-1/2 rounded-full bg-ink/70 ring-2 ring-raised" />
+      </div>
     </nav>
   )
 }

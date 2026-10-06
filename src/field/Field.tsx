@@ -171,6 +171,20 @@ function Sync({ engine }: { engine: FieldEngine }) {
         lit: w.stage === 'sovereign' ? 1 : w.stage === 'realm' ? readiness(w) : 0.2,
         seed: w.stage === 'seed',
       },
+      // a world with its own chain is also a planet: its size follows the people it keeps,
+      // its moons its revenue, rings mark a deep treasury, and its night side lights up
+      // with its holders (rounded, so small ticks don't rebuild it)
+      planet:
+        w.stage === 'sovereign'
+          ? {
+              template: w.template,
+              size: Math.round(Math.min(1, Math.max(0, (w.retained30d - 2500) / 10500)) * 20) / 20,
+              moons: Math.max(1, Math.min(3, Math.round(1 + w.treasury.revenue30dUsd / 80_000))),
+              rings: w.treasury.balanceUsd >= 2_000_000,
+              lights: Math.round(Math.min(1, Math.max(0.35, w.holders / 20_000)) * 10) / 10,
+              launchedAt: w.chain?.launchedAt ?? 0,
+            }
+          : undefined,
     }))
     if (draft) list.push({ id: draft.id, hill: { x: draft.x, z: draft.z, radius: draft.radius, height: draft.height, tiers: 1, moat: 0 }, muted: false, trouble: 0, town: { template: 'frontier', apps: 0, houses: 0, lit: 0, seed: true } })
     engine.setWorlds(list)
@@ -183,6 +197,9 @@ function Sync({ engine }: { engine: FieldEngine }) {
   }, [engine, cover])
   // trades send packets down the world's roads
   useEffect(() => onTrade((id) => engine.pulse(id)), [engine])
+  // zooming out past the whole map lifts you into space; zooming into the home planet brings you down
+  const nav = useNavigate()
+  useEffect(() => engine.onEscape((dir) => nav(dir === 'out' ? '/sovereignty' : '/')), [engine, nav])
   const seen = useRef(new Set<string>())
   useEffect(() => {
     for (const p of pings) {
