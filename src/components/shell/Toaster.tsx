@@ -3,7 +3,7 @@ import { AnimatePresence, m } from 'motion/react'
 import { Check, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useDocked } from '@/lib/useMedia'
-import { EASE_OUT } from '@/lib/motion'
+import { enter, exit } from '@/lib/motion'
 import { dismiss, toasts } from '@/lib/toast'
 import { useInsets } from '@/field/Field'
 
@@ -23,8 +23,8 @@ export function Toaster() {
             className="ink-card pointer-events-auto flex max-w-[min(420px,100%)] items-center gap-2.5 rounded-full py-1.5 pr-1.5 pl-3 text-[13px] shadow-[0_12px_32px_-12px_rgb(20_24_19/0.6)]"
             initial={{ opacity: 0, y: wide ? 8 : -8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.18 } }}
-            transition={{ duration: 0.3, ease: EASE_OUT }}
+            exit={{ opacity: 0, scale: 0.98, transition: exit }}
+            transition={enter}
           >
             <span className={cn('grid size-4 shrink-0 place-items-center rounded-full', t.tone === 'bad' ? 'bg-[#ff8a6b] text-ink' : 'bg-sprout text-on-sprout')}>
               {t.tone === 'bad' ? <X className="size-2.5" strokeWidth={3} /> : <Check className="size-2.5" strokeWidth={3} />}

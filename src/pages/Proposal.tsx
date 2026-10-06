@@ -12,7 +12,7 @@ import { wallet } from '@/lib/wallet'
 import { notify } from '@/lib/inbox'
 import { ago, date, hash, num, pct, span } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
-import { EASE_OUT } from '@/lib/motion'
+import { enter, grow } from '@/lib/motion'
 import { proposalDetail, type Comment } from '@/data/detail'
 import { useFieldView } from '@/field/Field'
 import { useLabels } from '@/components/shell/Shell'
@@ -143,7 +143,7 @@ function Vote({ p, w, quorum }: { p: Proposal; w: World; quorum: number }) {
           </div>
         </div>
         <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-ink/[0.08]">
-          <m.span className="h-full bg-ink" initial={false} animate={{ width: `${forShare * 100}%` }} transition={{ duration: 0.6, ease: EASE_OUT }} />
+          <m.span className="h-full bg-ink" initial={false} animate={{ width: `${forShare * 100}%` }} transition={grow} />
           <span className="h-full w-[2px] bg-panel" />
           <span className="h-full flex-1 bg-red/50" />
         </div>
@@ -236,7 +236,7 @@ function Discussion({ p, w, comments }: { p: Proposal; w: World; comments: Comme
     <Section title="Discussion" note={`${all.length} comments from holders, agents and the governor.`}>
       <ol className="grid gap-3">
         {all.map((c) => (
-          <m.li key={c.id} initial={c.role === 'You' ? { opacity: 0, y: 6 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: EASE_OUT }} className="flex gap-3">
+          <m.li key={c.id} initial={c.role === 'You' ? { opacity: 0, y: 6 } : false} animate={{ opacity: 1, y: 0 }} transition={enter} className="flex gap-3">
             {c.role === 'Governor' || c.role === 'You' ? (
               <span aria-hidden className={cn('mt-0.5 grid size-8 shrink-0 place-items-center rounded-full font-mono text-[11px] font-medium uppercase', c.role === 'Governor' ? 'ink-card' : 'bg-sprout text-on-sprout')}>
                 {c.role === 'Governor' ? 'AI' : 'Yo'}

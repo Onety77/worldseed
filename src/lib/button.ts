@@ -19,7 +19,7 @@ const sizes: Record<Size, string> = {
 
 export const buttonClass = (variant: Variant = 'outline', size: Size = 'md', className?: string) =>
   cn(
-    'inline-flex items-center justify-center gap-2 rounded-control font-semibold whitespace-nowrap transition-[background-color,box-shadow,color,scale] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 [&>svg]:shrink-0 [&>svg:last-child]:transition-transform [&>svg:last-child]:duration-300 hover-device:hover:[&>svg.lucide-arrow-right:last-child]:translate-x-0.5',
+    'inline-flex items-center justify-center gap-2 rounded-control font-semibold whitespace-nowrap transition-[background-color,box-shadow,color,scale] duration-(--dur-micro) active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 [&>svg]:shrink-0 [&>svg:last-child]:transition-transform [&>svg:last-child]:duration-(--dur-base) hover-device:hover:[&>svg.lucide-arrow-right:last-child]:translate-x-0.5',
     variants[variant],
     sizes[size],
     className,

@@ -11,7 +11,7 @@ import { readiness, runwayMonths } from '@/lib/rules'
 import { preset } from '@/lib/templates'
 import { clock, count, hash, pct, price, usd } from '@/lib/format'
 import { dayOf } from '@/lib/world'
-import { EASE_OUT, SPRING_UI } from '@/lib/motion'
+import { SPRING_UI, fadeUp, surface } from '@/lib/motion'
 import { useFieldView } from '@/field/Field'
 import { useLabels } from '@/components/shell/Shell'
 import { Panel } from '@/components/shell/Panel'
@@ -119,10 +119,7 @@ function Dossier({ w }: { w: World }) {
           role="tabpanel"
           aria-labelledby={`tab-${tab}`}
           className="pb-10"
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.22, ease: EASE_OUT }}
+          {...fadeUp}
         >
           {tab === 'overview' && <Overview w={w} go={choose} />}
           {tab === 'trade' && <TradeTab w={w} />}
@@ -241,7 +238,7 @@ function Planted({ w }: { w: World }) {
   const { state } = useLocation()
   if (!w.mine || !(state as { planted?: boolean } | null)?.planted) return null
   return (
-    <m.div className="mt-3 flex items-start gap-3 rounded-[10px] bg-sprout px-3 py-2.5 text-[13px] text-on-sprout shadow-[inset_0_0_0_1px_rgb(20_24_19/0.15)]" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: EASE_OUT, delay: 0.3 }}>
+    <m.div className="mt-3 flex items-start gap-3 rounded-[10px] bg-sprout px-3 py-2.5 text-[13px] text-on-sprout shadow-[inset_0_0_0_1px_rgb(20_24_19/0.15)]" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ ...surface, delay: 0.3 }}>
       <Check className="mt-0.5 size-4 shrink-0" strokeWidth={2.6} />
       <p>
         <span className="font-semibold">{w.name} is planted.</span> Its charter is stored, {w.ticker} is trading on pons, and the governor has started Genesis. Seven days to prove the first milestone.

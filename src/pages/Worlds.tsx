@@ -13,7 +13,9 @@ import { preset } from '@/lib/templates'
 import { clock, count, num, pct, price, span, usd } from '@/lib/format'
 import { currentEra, eraName, genesisLeft, isTroubled, treasuryTotal } from '@/lib/world'
 import { buttonClass } from '@/lib/button'
-import { EASE_OUT } from '@/lib/motion'
+import { RISE, enter, surface } from '@/lib/motion'
+
+let heroSeen = false
 import { useCover, useField, useFieldView, fieldFilter } from '@/field/Field'
 import { useLabels } from '@/components/shell/Shell'
 import { Panel, PanelHead } from '@/components/shell/Panel'
@@ -65,9 +67,11 @@ function Hero({ compact = false }: { compact?: boolean }) {
     <m.div
       ref={ref}
       className={cn(compact ? 'px-5 pt-3 pb-6' : 'pointer-events-none fixed top-6 right-[488px] left-[300px] z-[5] xl:right-[500px] xl:left-[316px]')}
-      initial={{ opacity: 0, y: 10 }}
+      // it rises in on the first arrival of the visit; coming back, it is simply there
+      initial={heroSeen ? { opacity: 0 } : { opacity: 0, y: RISE }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: EASE_OUT, delay: 0.15 }}
+      transition={heroSeen ? enter : { ...surface, delay: 0.15 }}
+      onAnimationComplete={() => void (heroSeen = true)}
     >
       <p className="label">An AI-native launchpad on Robinhood Chain</p>
       <h1 className={cn('mt-2 font-display text-display', compact ? 'text-[2.4rem] leading-[1.02]' : 'text-[clamp(2.6rem,1rem+2.9vw,4.1rem)] leading-[0.98]')}>Every token gets a world.</h1>

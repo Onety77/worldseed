@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, m } from 'motion/react'
 import { createStore } from '@/lib/store'
 import { toggleTheme } from '@/lib/theme'
-import { EASE_OUT } from '@/lib/motion'
+import { enter, exit } from '@/lib/motion'
 import { useField } from '@/field/Field'
 import { Dialog } from '@/components/ui/Dialog'
 
@@ -124,8 +124,8 @@ export function Keys() {
             className="ink-card pointer-events-none fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full px-3.5 py-2 text-[12.5px]"
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, transition: { duration: 0.15 } }}
-            transition={{ duration: 0.2, ease: EASE_OUT }}
+            exit={{ opacity: 0, transition: exit }}
+            transition={enter}
           >
             <kbd className="font-mono font-semibold">g</kbd>
             <span className="text-paper/65">then</span>

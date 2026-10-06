@@ -6,7 +6,7 @@ import { cn } from '@/lib/cn'
 import { presets, profiles, preset, eras } from '@/lib/templates'
 import { usd } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
-import { EASE_OUT } from '@/lib/motion'
+import { enter, exit } from '@/lib/motion'
 import { draft, tickerFrom, compile, POLICIES, DEFAULT_PROHIBITED, type Draft, type Policy } from '@/lib/draft'
 import { Split } from '@/components/charts/Split'
 import { WorldMark } from '@/components/ui/WorldMark'
@@ -155,7 +155,7 @@ export function CharterStep({ d }: { d: Draft }) {
         </div>
         <AnimatePresence initial={false}>
           {(busy || d.compiled) && (
-            <m.div key="out" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.35, ease: EASE_OUT }} className="overflow-hidden">
+            <m.div key="out" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0, transition: exit }} transition={enter} className="overflow-hidden">
               <Compiled d={d} busy={busy} />
             </m.div>
           )}
@@ -231,7 +231,7 @@ function Compiled({ d, busy }: { d: Draft; busy: boolean }) {
         ) : (
           <dl className="mt-2 grid gap-px overflow-hidden rounded-[10px] bg-line ring-1 ring-line">
             {rows.map(([k, v], i) => (
-              <m.div key={k} className="grid grid-cols-[88px_1fr] gap-3 bg-raised px-3 py-2 text-[13px]" initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3, delay: i * 0.05, ease: EASE_OUT }}>
+              <m.div key={k} className="grid grid-cols-[88px_1fr] gap-3 bg-raised px-3 py-2 text-[13px]" initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ ...enter, delay: i * 0.05 }}>
                 <dt className="text-ink-3">{k}</dt>
                 <dd>{v}</dd>
               </m.div>

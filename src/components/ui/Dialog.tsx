@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, m } from 'motion/react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { EASE_OUT } from '@/lib/motion'
+import { RISE, T, enter, exit } from '@/lib/motion'
 
 /**
  * A modal sheet over everything: centred on wide screens, rising from the bottom on
@@ -46,7 +46,7 @@ export function Dialog({ open, onClose, label, children, className, top = false 
     <AnimatePresence>
       {open && (
         <div className={cn('fixed inset-0 z-50 flex justify-center px-0 sm:px-4', top ? 'items-end sm:items-start sm:pt-[12vh]' : 'items-end sm:items-center')}>
-          <m.div className="absolute inset-0 bg-scrim backdrop-blur-[2px]" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} />
+          <m.div className="absolute inset-0 bg-scrim backdrop-blur-[2px]" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: exit }} transition={{ duration: T.quick }} />
           <m.div
             ref={box}
             role="dialog"
@@ -54,10 +54,10 @@ export function Dialog({ open, onClose, label, children, className, top = false 
             aria-label={label}
             tabIndex={-1}
             className={cn('relative w-full max-w-[460px] rounded-t-[20px] bg-panel pb-[env(safe-area-inset-bottom,0px)] shadow-[0_0_0_1px_var(--line),0_30px_80px_-30px_rgb(20_24_19/0.6)] outline-none sm:rounded-[18px] sm:pb-0', className)}
-            initial={{ opacity: 0, y: 24 }}
+            initial={{ opacity: 0, y: RISE * 2 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 16 }}
-            transition={{ duration: 0.3, ease: EASE_OUT }}
+            exit={{ opacity: 0, y: 16, transition: exit }}
+            transition={enter}
           >
             <button onClick={onClose} aria-label="Close" className="absolute top-3 right-3 z-10 grid size-8 place-items-center rounded-full text-ink-3 hover-device:hover:bg-hover hover-device:hover:text-ink">
               <X className="size-4" />

@@ -306,6 +306,8 @@ export class FieldEngine {
   private base = 128
   /** momentum left over from a flick: ground units (or radians) per second */
   private vel = { tx: 0, tz: 0, az: 0 }
+  /** a timed flight from one view to the next: lift, travel, settle. Any touch cancels it */
+  private flight: { from: Cam; t0: number; dur: number; lift: number } | null = null
   private lastRender = 0
   private district: { input: DistrictInput; d: District; shown: number } | null = null
 
@@ -471,7 +473,23 @@ export class FieldEngine {
     else if (w && v.kind === 'district') this.goal = { ...this.goal, tx: w.hill.x, tz: w.hill.z, dist: (narrow ? 30 + w.hill.radius * 2.5 : (14 + w.hill.radius * 1.9) * Math.sqrt(room)), tilt: 1.02 }
     else if (w) this.goal = { ...this.goal, tx: w.hill.x, tz: w.hill.z, dist: ((narrow ? 40 : 28) + w.hill.radius * 2.6) * Math.sqrt(room), tilt: 0.92 }
     this.base = this.goal.dist
-    if (changed) this.vel = { tx: 0, tz: 0, az: 0 }
+    if (changed) {
+      this.vel = { tx: 0, tz: 0, az: 0 }
+      // going somewhere new: fly there on a timed path instead of chasing the goal, so the
+      // camera eases out of where it is as well as into where it lands. Long trips across
+      // the map lift a little at the middle, the way a survey drone would.
+      const c = this.cam
+      const across = Math.hypot(this.goal.tx - c.tx, this.goal.tz - c.tz)
+      const reach = across + Math.abs(this.goal.dist - c.dist) * 0.5
+      if (!this.reduced && !this.dragging && reach > 1) {
+        this.flight = {
+          from: { ...c },
+          t0: performance.now(),
+          dur: Math.min(1700, 750 + reach * 9),
+          lift: across > 18 ? Math.min(34, across * 0.32) : 0,
+        }
+      }
+    }
     this.wake()
   }
 
@@ -721,16 +739,33 @@ export class FieldEngine {
       moving = true
     }
 
-    // camera eases toward its goal; when idle it drifts slowly round
-    const idle = !this.dragging && now - this.interacted > 2500
-    if (this.drift && !this.reduced && idle) this.goal.az += dt * (this.view.kind === 'world' ? 0.05 : this.view.kind === 'district' ? 0.025 : 0.018)
-    // follow fingers closely; travel between views more gently
-    const k = 1 - Math.pow(this.dragging ? 0.000002 : 0.0015, dt)
+    // when idle, the camera drifts slowly round; the drift fades in rather than starting at speed
+    const still = now - this.interacted - 2500
+    const idle = !this.dragging && still > 0 && !this.flight
+    if (this.drift && !this.reduced && idle) {
+      const ramp = Math.min(1, still / 3000)
+      this.goal.az += dt * ramp * ramp * (this.view.kind === 'world' ? 0.04 : this.view.kind === 'district' ? 0.022 : 0.016)
+    }
     let easing = false
-    for (const key of ['tx', 'tz', 'dist', 'tilt', 'az'] as const) {
-      const next = this.reduced ? this.goal[key] : lerp(this.cam[key], this.goal[key], k)
-      if (Math.abs(next - this.goal[key]) > 0.002) easing = true
-      this.cam[key] = next
+    const f = this.flight
+    // a touch, a key or the wheel takes over from a flight wherever it has got to
+    if (f && this.interacted > f.t0) this.flight = null
+    if (this.flight && f) {
+      const p = Math.min(1, (now - f.t0) / f.dur)
+      // ease in and out (cubic), matching the interface's travel curve
+      const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2
+      for (const key of ['tx', 'tz', 'dist', 'tilt', 'az'] as const) this.cam[key] = lerp(f.from[key], this.goal[key], e)
+      this.cam.dist += f.lift * Math.sin(Math.PI * p)
+      easing = p < 1
+      if (p >= 1) this.flight = null
+    } else {
+      // follow fingers closely; settle gently after a gesture or a zoom
+      const k = 1 - Math.pow(this.dragging ? 0.000002 : 0.0015, dt)
+      for (const key of ['tx', 'tz', 'dist', 'tilt', 'az'] as const) {
+        const next = this.reduced ? this.goal[key] : lerp(this.cam[key], this.goal[key], k)
+        if (Math.abs(next - this.goal[key]) > 0.002) easing = true
+        this.cam[key] = next
+      }
     }
     if (easing) moving = true
     // only the slow idle drift is moving: on modest devices, draw it at half rate

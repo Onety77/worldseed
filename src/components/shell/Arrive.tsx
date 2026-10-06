@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
+import { EASE_IN_OUT, T, exit } from '@/lib/motion'
 import { useField } from '@/field/Field'
 import { Mark } from '@/components/ui/Logo'
 
@@ -30,8 +31,8 @@ export function Arrive() {
   return (
     <AnimatePresence>
       {shown && (
-        <m.div key="arrive" role="status" aria-label="Loading WORLDSEED" className="pointer-events-none fixed inset-0 z-[60] grid place-items-center bg-paper" exit={{ opacity: 0 }} transition={{ duration: 0.7, ease: [0.4, 0, 0.2, 1] }}>
-          <m.div className="grid justify-items-center gap-3.5 font-mono text-[11px] font-medium tracking-[0.14em] text-ink uppercase" exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.35 }}>
+        <m.div key="arrive" role="status" aria-label="Loading WORLDSEED" className="pointer-events-none fixed inset-0 z-[60] grid place-items-center bg-paper" exit={{ opacity: 0 }} transition={{ duration: T.scene, ease: EASE_IN_OUT }}>
+          <m.div className="grid justify-items-center gap-3.5 font-mono text-[11px] font-medium tracking-[0.14em] text-ink uppercase" exit={{ opacity: 0, y: -6 }} transition={exit}>
             <Mark className="size-10" />
             <span>Surveying the Field</span>
             <span className="arrive-line" />

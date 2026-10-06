@@ -1,7 +1,7 @@
 import { Check } from 'lucide-react'
 import { m } from 'motion/react'
 import { cn } from '@/lib/cn'
-import { EASE_OUT } from '@/lib/motion'
+import { grow } from '@/lib/motion'
 
 /**
  * Where something is in its process: done steps checked, the current one lit, the rest
@@ -21,7 +21,7 @@ export function Timeline({ steps, current, tone = 'green', className }: { steps:
                   className={cn('absolute inset-y-0 left-0', done ? 'bg-ink' : tone === 'red' ? 'bg-red' : 'bg-sprout shadow-[inset_0_0_0_1px_rgb(20_24_19/0.25)]')}
                   initial={false}
                   animate={{ width: done ? '100%' : '55%' }}
-                  transition={{ duration: 0.6, ease: EASE_OUT }}
+                  transition={grow}
                 />
               )}
             </span>

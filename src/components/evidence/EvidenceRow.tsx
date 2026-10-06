@@ -7,7 +7,7 @@ import { cn } from '@/lib/cn'
 import { useNow } from '@/lib/clock'
 import { ago, hash, usd } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
-import { EASE_OUT } from '@/lib/motion'
+import { exit, reveal, surface } from '@/lib/motion'
 import { fileChallenge, filed } from '@/lib/civic'
 import { wallet } from '@/lib/wallet'
 import { notify } from '@/lib/inbox'
@@ -44,8 +44,8 @@ export function EvidenceRow({ e, world, showWorld = false, arrive = false }: { e
       className={cn('overflow-hidden rounded-[12px] transition-colors', open ? 'bg-raised shadow-[0_0_0_1px_var(--line)]' : 'hover-device:hover:bg-raised/70')}
       initial={arrive ? { opacity: 0, height: 0 } : false}
       animate={{ opacity: 1, height: 'auto' }}
-      exit={{ opacity: 0, height: 0 }}
-      transition={{ duration: 0.4, ease: EASE_OUT }}
+      exit={{ opacity: 0, height: 0, transition: exit }}
+      transition={surface}
     >
       <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={id} className="flex w-full items-start gap-3 px-3 py-3 text-left">
         {showWorld ? <WorldMark world={world} className="mt-0.5 size-7" /> : <span className={cn('mt-0.5 shrink-0 rounded-[6px] px-1.5 py-1 font-mono text-[10px] leading-none tracking-wide uppercase', stepTone[e.step])}>{e.step}</span>}
@@ -65,12 +65,12 @@ export function EvidenceRow({ e, world, showWorld = false, arrive = false }: { e
         </span>
         <span className="flex shrink-0 flex-col items-end gap-2">
           <VerdictTag verdict={verdict} />
-          <ChevronDown className={cn('size-4 text-ink-3 transition-transform duration-300', open && 'rotate-180')} />
+          <ChevronDown className={cn('size-4 text-ink-3 transition-transform duration-(--dur-base)', open && 'rotate-180')} />
         </span>
       </button>
       <AnimatePresence initial={false}>
         {open && (
-          <m.div id={id} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3, ease: EASE_OUT }} className="overflow-hidden">
+          <m.div id={id} {...reveal} className="overflow-hidden">
             <Bundle e={e} world={world} mine={Boolean(mine)} mineId={mine?.id} />
           </m.div>
         )}

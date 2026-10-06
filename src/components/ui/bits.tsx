@@ -3,7 +3,7 @@ import { m } from 'motion/react'
 import type { Stage, Verdict } from '@/lib/types'
 import { cn } from '@/lib/cn'
 import { change } from '@/lib/format'
-import { SPRING_UI } from '@/lib/motion'
+import { SPRING_UI, grow } from '@/lib/motion'
 import { StageGlyph } from './StageGlyph'
 
 const stageName: Record<Stage, string> = { seed: 'Seed', realm: 'Realm', sovereign: 'Sovereign' }
@@ -36,7 +36,7 @@ export function Meter({ value, className, tone }: { value: number; className?: s
         className={cn('absolute inset-y-0 left-0 rounded-full', tone === 'red' ? 'bg-red' : v >= 1 ? 'bg-sprout shadow-[inset_0_0_0_1px_rgb(20_24_19/0.18)]' : 'bg-ink/70')}
         initial={false}
         animate={{ width: `${v * 100}%` }}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        transition={grow}
       />
     </span>
   )

@@ -9,7 +9,7 @@ import { useChallenges, useProposals, openJobs } from '@/lib/civic'
 import { useNow } from '@/lib/clock'
 import { ago, usd } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
-import { EASE_OUT } from '@/lib/motion'
+import { enter, exit } from '@/lib/motion'
 import { useCover } from '@/field/Field'
 import { Mark, Wordmark } from '@/components/ui/Logo'
 import { StageFilter } from './StageFilter'
@@ -106,7 +106,7 @@ export function Rail() {
 
         <AnimatePresence initial={false}>
           {atlas && (
-            <m.div key="filter" className="px-4 pt-5" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3, ease: EASE_OUT }}>
+            <m.div key="filter" className="px-4 pt-5" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0, transition: exit }} transition={enter}>
               <p className="label px-1 pb-1.5">Show</p>
               <StageFilter layoutId="rail-filter" grid />
             </m.div>

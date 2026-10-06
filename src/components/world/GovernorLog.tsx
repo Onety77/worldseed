@@ -5,7 +5,7 @@ import { cn } from '@/lib/cn'
 import { useEvidence } from '@/lib/sim'
 import { profiles } from '@/lib/templates'
 import { date, usd } from '@/lib/format'
-import { EASE_IN_OUT } from '@/lib/motion'
+import { T, travel } from '@/lib/motion'
 import { Meter, Segmented } from '@/components/ui/bits'
 import { EvidenceRow } from '@/components/evidence/EvidenceRow'
 import { Card, Section } from './parts'
@@ -103,8 +103,8 @@ export function Loop({ step, pulse, className }: { step: Evidence['step']; pulse
           const q = at(k)
           return <circle key={s} cx={q.x} cy={q.y} r={k === i ? 0 : 3} fill="var(--panel)" stroke="var(--ink)" strokeOpacity=".5" />
         })}
-        <m.circle r="7" fill="var(--sprout)" stroke="var(--ink)" strokeWidth="1.2" initial={false} animate={{ cx: p.x, cy: p.y }} transition={{ duration: 0.8, ease: EASE_IN_OUT }} />
-        <m.circle key={pulse} r="7" fill="none" stroke="var(--green)" initial={{ cx: p.x, cy: p.y, r: 7, opacity: 0.8 }} animate={{ cx: p.x, cy: p.y, r: 16, opacity: 0 }} transition={{ duration: 1.4, delay: 0.6 }} />
+        <m.circle r="7" fill="var(--sprout)" stroke="var(--ink)" strokeWidth="1.2" initial={false} animate={{ cx: p.x, cy: p.y }} transition={travel} />
+        <m.circle key={pulse} r="7" fill="none" stroke="var(--green)" initial={{ cx: p.x, cy: p.y, r: 7, opacity: 0.8 }} animate={{ cx: p.x, cy: p.y, r: 16, opacity: 0 }} transition={{ duration: T.pulse, delay: T.data - 0.1 }} />
       </svg>
       <div className="absolute inset-0 grid place-items-center text-center">
         <div>

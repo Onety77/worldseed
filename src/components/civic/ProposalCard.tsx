@@ -7,7 +7,7 @@ import { useNow } from '@/lib/clock'
 import { votes } from '@/lib/civic'
 import { pct, span } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
-import { EASE_OUT } from '@/lib/motion'
+import { grow } from '@/lib/motion'
 import { WorldMark } from '@/components/ui/WorldMark'
 import { wallet } from '@/lib/wallet'
 import { notify } from '@/lib/inbox'
@@ -45,7 +45,7 @@ export function ProposalCard({ p, world }: { p: Proposal; world?: World }) {
 
       <div className="mt-3">
         <div className="flex h-2 overflow-hidden rounded-full bg-ink/[0.08]">
-          <m.span className="h-full bg-ink" initial={false} animate={{ width: `${forShare * 100}%` }} transition={{ duration: 0.6, ease: EASE_OUT }} />
+          <m.span className="h-full bg-ink" initial={false} animate={{ width: `${forShare * 100}%` }} transition={grow} />
           <span className="h-full w-[2px] bg-panel" />
           <span className="h-full flex-1 bg-red/50" />
         </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
 import { cn } from '@/lib/cn'
-import { EASE_OUT } from '@/lib/motion'
+import { enter, exit } from '@/lib/motion'
 
 /**
  * A live figure: changed characters roll in (up when the value rises, down when it falls)
@@ -30,8 +30,8 @@ export function Ticking({ value, text, className, flash = true }: { value: numbe
               className="inline-block"
               initial={{ y: `${(dir || 1) * 80}%`, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              exit={{ y: `${(dir || 1) * -80}%`, opacity: 0 }}
-              transition={{ duration: 0.35, ease: EASE_OUT }}
+              exit={{ y: `${(dir || 1) * -80}%`, opacity: 0, transition: exit }}
+              transition={enter}
             >
               {ch}
             </m.span>

@@ -103,7 +103,7 @@ export function Labels({ worlds, focus, detail, dim = false, hide = null, fresh 
               if (el) refs.current.set(w.id, el)
               else refs.current.delete(w.id)
             }}
-            className="group absolute top-0 left-0 opacity-0 transition-opacity duration-300"
+            className="group absolute top-0 left-0 opacity-0 transition-opacity duration-(--dur-base)"
             style={{ visibility: 'hidden' }}
           >
             <span className={cn('contents', dim && !on && (d ? '[&>a]:opacity-95' : '[&>a]:opacity-55'))}>
@@ -114,7 +114,7 @@ export function Labels({ worlds, focus, detail, dim = false, hide = null, fresh 
               onFocus={() => engine.setHover(w.id)}
               onBlur={() => engine.setHover(null)}
               className={cn(
-                'pointer-events-auto absolute bottom-[var(--lead)] left-0 flex -translate-x-1/2 items-center gap-1.5 rounded-full py-1 pr-2.5 pl-1.5 text-[12.5px] leading-none font-semibold whitespace-nowrap shadow-[0_0_0_1px_var(--line-2),0_6px_16px_-10px_rgb(20_24_19/0.5)] transition-[background-color,box-shadow,color] duration-200',
+                'pointer-events-auto absolute bottom-[var(--lead)] left-0 flex -translate-x-1/2 items-center gap-1.5 rounded-full py-1 pr-2.5 pl-1.5 text-[12.5px] leading-none font-semibold whitespace-nowrap shadow-[0_0_0_1px_var(--line-2),0_6px_16px_-10px_rgb(20_24_19/0.5)] transition-[background-color,box-shadow,color] duration-(--dur-quick)',
                 born ? 'fresh-chain bg-sprout text-on-sprout' : on ? 'bg-ink text-paper' : 'bg-raised/90 text-ink backdrop-blur-sm group-data-hover:bg-sprout group-data-hover:text-on-sprout',
                 w.mine && !on && 'shadow-[0_0_0_1.5px_var(--green),0_6px_16px_-10px_rgb(20_24_19/0.5)]',
               )}

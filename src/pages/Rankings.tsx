@@ -7,7 +7,7 @@ import { useNow } from '@/lib/clock'
 import { useTitle } from '@/lib/useTitle'
 import { useEvidence, useWorlds } from '@/lib/sim'
 import { useChallenges } from '@/lib/civic'
-import { EASE_OUT } from '@/lib/motion'
+import { enter, exit } from '@/lib/motion'
 import { boardFor, boards, rank, type BoardId, type PersonRow, type WorldRow } from '@/lib/rankings'
 import { useField, useFieldView, useSpotlight } from '@/field/Field'
 import { useLabels } from '@/components/shell/Shell'
@@ -89,7 +89,7 @@ export function RankingsLens() {
           <p className="mt-0.5 text-[13px] text-ink-3">{board.how}</p>
         </div>
         <AnimatePresence mode="wait" initial={false}>
-          <m.ol key={board.id} className="mt-3 grid gap-px" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: EASE_OUT }}>
+          <m.ol key={board.id} className="mt-3 grid gap-px" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: exit }} transition={enter}>
             {rows.map((r, i) => (r.kind === 'world' ? <WorldItem key={r.world.id} r={r} i={i} top={top} /> : <PersonItem key={r.person.handle} r={r} i={i} top={top} />))}
           </m.ol>
         </AnimatePresence>

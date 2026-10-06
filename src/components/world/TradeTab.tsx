@@ -8,7 +8,7 @@ import { CURVE_TARGET_USD, SUPPLY, history, holders, market, usePrice, type Rang
 import { FEE, quote, trade, wallet } from '@/lib/wallet'
 import { ago, change, count, num, pct, price, usd } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
-import { EASE_OUT } from '@/lib/motion'
+import { enter, exit } from '@/lib/motion'
 import { PriceChart } from '@/components/charts/PriceChart'
 import { Meter, Segmented } from '@/components/ui/bits'
 import { Ticking } from '@/components/motion/Ticking'
@@ -217,7 +217,7 @@ function TradeBox({ w }: { w: World }) {
       </button>
       <AnimatePresence>
         {state === 'done' && last && (
-          <m.p className="mt-3 flex items-center gap-2 text-[13px] text-ink-2" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: EASE_OUT }} role="status">
+          <m.p className="mt-3 flex items-center gap-2 text-[13px] text-ink-2" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: exit }} transition={enter} role="status">
             <Check className="size-4 text-green" strokeWidth={2.6} />
             {side === 'buy' ? 'Bought' : 'Sold'} {num(last.tokens)} {w.ticker} for {usd(last.usd)}.
           </m.p>
@@ -251,8 +251,8 @@ function TapeList({ w }: { w: World }) {
               className={cn('grid grid-cols-[52px_1fr_1fr_56px] items-center gap-3 overflow-hidden border-b border-line px-3.5 text-[12.5px] last:border-0', t.who === 'you' && 'bg-sprout-soft')}
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 38, opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.35, ease: EASE_OUT }}
+              exit={{ height: 0, opacity: 0, transition: exit }}
+              transition={enter}
             >
               <span className={cn('font-mono text-[11px] font-medium uppercase', t.side === 'buy' ? 'text-green' : 'text-red')}>{t.side}</span>
               <span className="truncate font-mono tabular">{usd(t.usd)}</span>

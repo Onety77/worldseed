@@ -10,7 +10,7 @@ import { plant, useWorlds } from '@/lib/sim'
 import { preset, profiles } from '@/lib/templates'
 import { hash, usd } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
-import { EASE_OUT, SPRING_UI } from '@/lib/motion'
+import { RISE, SPRING_UI, enter, exit, surface } from '@/lib/motion'
 import { blank, draft, draftHash, toWorld, POLICIES, type Draft } from '@/lib/draft'
 import { continent } from '@/field/height'
 import { listToken } from '@/lib/market'
@@ -158,7 +158,7 @@ export function SeedPage() {
         </div>
 
         <AnimatePresence mode="wait" initial={false}>
-          <m.div key={step} className="px-5 pt-5 pb-6 lg:px-6" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.22, ease: EASE_OUT }}>
+          <m.div key={step} className="px-5 pt-5 pb-6 lg:px-6" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10, transition: exit }} transition={enter}>
             <h1 className="text-h2">{s.title}</h1>
             <p className="mt-1 mb-5 text-[13.5px] text-ink-2">{s.note}</p>
             {step === 0 && <Identity d={d} />}
@@ -291,9 +291,9 @@ function LiveCharter({ d }: { d: Draft }) {
       ref={ref}
       aria-label="Charter so far"
       className="sheet fixed bottom-3 left-[288px] z-[5] flex max-h-[44vh] w-[340px] flex-col overflow-hidden rounded-card"
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: RISE }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, ease: EASE_OUT, delay: 0.1 }}
+      transition={{ ...surface, delay: 0.1 }}
     >
       <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
         <p className="text-[13px] font-semibold">Charter so far</p>

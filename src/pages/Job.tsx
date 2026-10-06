@@ -12,7 +12,7 @@ import { claimJob, credit, wallet } from '@/lib/wallet'
 import { notify } from '@/lib/inbox'
 import { ago, span, usd } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
-import { EASE_OUT } from '@/lib/motion'
+import { surface } from '@/lib/motion'
 import { jobDetail } from '@/data/detail'
 import { useFieldView } from '@/field/Field'
 import { useLabels } from '@/components/shell/Shell'
@@ -269,7 +269,7 @@ function Yours({ j, w, run, ph, checks }: { j: Job; w: World; run: JobRun | unde
       </Card>
       <AnimatePresence>
         {ph.stage >= 4 && (
-          <m.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: EASE_OUT }} className={cn('rounded-[14px] p-4', ph.stage === 5 ? 'bg-sprout text-on-sprout' : 'ring-1 ring-line ring-inset')}>
+          <m.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={surface} className={cn('rounded-[14px] p-4', ph.stage === 5 ? 'bg-sprout text-on-sprout' : 'ring-1 ring-line ring-inset')}>
             {ph.stage === 5 ? (
               <>
                 <p className="font-display text-[22px] font-[560]">Paid {usd(j.escrowUsd)}</p>
@@ -282,7 +282,7 @@ function Yours({ j, w, run, ph, checks }: { j: Job; w: World; run: JobRun | unde
                   Passed review. Anyone can challenge it for another <span className="font-mono text-ink tabular">{Math.ceil(ph.left)}s</span> (72 hours for real); then escrow pays you.
                 </p>
                 <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink/[0.08]">
-                  <span className="block h-full bg-ink/70 transition-[width] duration-1000 ease-linear" style={{ width: `${(1 - ph.left / 45) * 100}%` }} />
+                  <span className="block h-full bg-ink/70 transition-[width] duration-(--dur-data) ease-linear" style={{ width: `${(1 - ph.left / 45) * 100}%` }} />
                 </div>
               </>
             )}

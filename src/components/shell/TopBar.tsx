@@ -5,7 +5,7 @@ import { ArrowUpRight, ChevronDown, Plus } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { lenses, lensFor } from '@/lib/lenses'
 import { buttonClass } from '@/lib/button'
-import { EASE_OUT } from '@/lib/motion'
+import { enter, exit } from '@/lib/motion'
 import { Mark } from '@/components/ui/Logo'
 import { Legend } from './Legend'
 import { InboxButton } from './Inbox'
@@ -66,7 +66,7 @@ export function TopBar() {
           className="flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-[9px] px-2 text-left text-[15px] font-semibold hover-device:hover:bg-hover"
         >
           <span className="truncate">{here}</span>
-          <ChevronDown className={cn('size-4 shrink-0 text-ink-3 transition-transform duration-300', open && 'rotate-180')} />
+          <ChevronDown className={cn('size-4 shrink-0 text-ink-3 transition-transform duration-(--dur-base)', open && 'rotate-180')} />
         </button>
         <button onClick={() => searchOpen.set(true)} aria-label="Search" className="grid size-9 place-items-center rounded-[9px] text-ink-2 hover-device:hover:bg-hover">
           <SearchIcon className="size-[18px]" strokeWidth={1.8} />
@@ -85,8 +85,8 @@ export function TopBar() {
               className="absolute inset-x-0 top-[calc(100%+6px)] max-h-[calc(100dvh-80px)] origin-top overflow-y-auto overscroll-contain rounded-[14px] bg-panel p-2 shadow-[0_0_0_1px_var(--line),0_24px_60px_-24px_rgb(20_24_19/0.55)]"
               initial={{ opacity: 0, y: -6, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -4, scale: 0.98 }}
-              transition={{ duration: 0.22, ease: EASE_OUT }}
+              exit={{ opacity: 0, y: -4, scale: 0.98, transition: exit }}
+              transition={enter}
             >
               <p className="label px-2.5 pt-1.5 pb-1">Atlas</p>
               <ul>

@@ -11,7 +11,7 @@ import { settled, useChallenges } from '@/lib/civic'
 import { credit } from '@/lib/wallet'
 import { notify } from '@/lib/inbox'
 import { ago, date, hash, span, usd } from '@/lib/format'
-import { EASE_OUT } from '@/lib/motion'
+import { enter, exit, surface } from '@/lib/motion'
 import { challengeDetail } from '@/data/detail'
 import { useFieldView } from '@/field/Field'
 import { useLabels } from '@/components/shell/Shell'
@@ -156,11 +156,11 @@ function Case({ c, w }: { c: Challenge; w: World }) {
                     </div>
                     <AnimatePresence mode="wait" initial={false}>
                       {voted ? (
-                        <m.span key="v" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3, ease: EASE_OUT }} className={cn('rounded-full px-2.5 py-1 text-[11.5px] font-semibold', p.vote === 'uphold' ? 'bg-red-soft text-red' : 'bg-ink/[0.07]')}>
+                        <m.span key="v" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={enter} className={cn('rounded-full px-2.5 py-1 text-[11.5px] font-semibold', p.vote === 'uphold' ? 'bg-red-soft text-red' : 'bg-ink/[0.07]')}>
                           {p.vote === 'uphold' ? 'Uphold' : 'Reject'}
                         </m.span>
                       ) : (
-                        <m.span key="p" exit={{ opacity: 0 }} className="flex items-center gap-1.5 text-[12px] text-ink-3">
+                        <m.span key="p" exit={{ opacity: 0, transition: exit }} className="flex items-center gap-1.5 text-[12px] text-ink-3">
                           <span className="breathe size-1.5 rounded-full bg-ink-4" /> Reviewing
                         </m.span>
                       )}
@@ -168,7 +168,7 @@ function Case({ c, w }: { c: Challenge; w: World }) {
                   </div>
                   <AnimatePresence initial={false}>
                     {voted && (
-                      <m.p initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} transition={{ duration: 0.35, ease: EASE_OUT }} className="overflow-hidden text-[13px] text-ink-2">
+                      <m.p initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} transition={enter} className="overflow-hidden text-[13px] text-ink-2">
                         <span className="block pt-2.5">{p.reason}</span>
                       </m.p>
                     )}
@@ -182,7 +182,7 @@ function Case({ c, w }: { c: Challenge; w: World }) {
         <Section title="Ruling">
           <AnimatePresence mode="wait" initial={false}>
             {ruled ? (
-              <m.div key="r" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: EASE_OUT }} className={cn('rounded-[14px] p-4', upheld ? 'bg-sprout text-on-sprout' : 'ink-card')}>
+              <m.div key="r" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={surface} className={cn('rounded-[14px] p-4', upheld ? 'bg-sprout text-on-sprout' : 'ink-card')}>
                 <p className="font-display text-[22px] font-[560]">{upheld ? 'Upheld, two to one' : 'Rejected'}</p>
                 <p className="mt-1 text-[13.5px] opacity-85">
                   {upheld ? `Your ${usd(c.bondUsd)} bond comes back with a ${usd(reward)} reward. The governor's payout for this bundle is clawed back to the ${w.name} treasury, and the objective it counted toward is re-checked.` : `The panel sided with the governor. Your bond goes to the challenge reserve.`}
@@ -190,7 +190,7 @@ function Case({ c, w }: { c: Challenge; w: World }) {
                 <p className="mt-2 text-[12.5px] font-semibold">{done ? (upheld ? `${usd(c.bondUsd + reward)} returned to your wallet.` : 'Settled.') : 'Settling…'}</p>
               </m.div>
             ) : (
-              <m.div key="w" exit={{ opacity: 0 }} className="rounded-[14px] p-4 ring-1 ring-line ring-inset">
+              <m.div key="w" exit={{ opacity: 0, transition: exit }} className="rounded-[14px] p-4 ring-1 ring-line ring-inset">
                 <p className="text-[14px] font-semibold">Waiting on the panel</p>
                 <p className="mt-1 text-[13px] text-ink-2">
                   {live ? `The ruling lands in about ${Math.max(0, Math.ceil(RULES_AT - elapsed))} seconds in this demo (up to 72 hours for real).` : `The window closes in ${span(c.endsAt - now)}. Until then the payout for this bundle is held.`}

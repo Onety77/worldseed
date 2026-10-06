@@ -4,7 +4,7 @@ import { Pause, Play, RotateCcw, X } from 'lucide-react'
 import type { World } from '@/lib/types'
 import { cn } from '@/lib/cn'
 import { useDocked } from '@/lib/useMedia'
-import { EASE_OUT } from '@/lib/motion'
+import { RISE, enter } from '@/lib/motion'
 import { lifeOf } from '@/lib/replay'
 import { useField, useInsets } from '@/field/Field'
 
@@ -80,9 +80,9 @@ export function Replay({ w, onClose }: { w: World; onClose: () => void }) {
       aria-label={`Replay of ${w.name}`}
       className="fixed z-[4] mx-auto max-w-[640px]"
       style={style}
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: RISE }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: EASE_OUT }}
+      transition={enter}
     >
       <div className="sheet rounded-[16px] px-3 pt-2.5 pb-3 sm:px-4">
         <div className="flex items-center gap-2.5">

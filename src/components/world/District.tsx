@@ -7,7 +7,7 @@ import { useDocked } from '@/lib/useMedia'
 import { jobs } from '@/lib/civic'
 import { claimed } from '@/lib/wallet'
 import { count, date, usd } from '@/lib/format'
-import { EASE_OUT } from '@/lib/motion'
+import { T, enter, exit } from '@/lib/motion'
 import { useField, useInsets } from '@/field/Field'
 
 /*
@@ -49,7 +49,7 @@ export function StepInside({ w, inside, onToggle, onReplay }: { w: World; inside
       )}
       <AnimatePresence>
         {inside && wide && (
-          <m.p className="sheet rounded-[10px] px-3 py-2 text-[12.5px] text-ink-2" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.3, ease: EASE_OUT }}>
+          <m.p className="sheet rounded-[10px] px-3 py-2 text-[12.5px] text-ink-2" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4, transition: exit }} transition={enter}>
             {w.stage === 'seed' ? 'A survey stake and a site office. Its first app is being built.' : `${w.apps.length} apps standing · ${open} ${open === 1 ? 'job' : 'jobs'} under way · agents at work`}
           </m.p>
         )}
@@ -83,7 +83,7 @@ export function DistrictTags({ w, inside, onJob }: { w: World; inside: boolean; 
   return (
     <AnimatePresence>
       {inside && (
-        <m.div key="tags" className="pointer-events-none fixed inset-0 z-[2] overflow-hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.6, delay: 0.4 }} aria-label={`Inside ${w.name}`} role="region">
+        <m.div key="tags" className="pointer-events-none fixed inset-0 z-[2] overflow-hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: exit }} transition={{ duration: T.scene, delay: T.calm }} aria-label={`Inside ${w.name}`} role="region">
           {w.apps.map((a) => {
             const on = picked === a.name
             return (

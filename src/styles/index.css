@@ -20,6 +20,11 @@
 @custom-variant docked (&:where(.docked *));
 
 :root {
+  --dur-micro: 140ms;
+  --dur-quick: 200ms;
+  --dur-base: 300ms;
+  --dur-calm: 450ms;
+  --dur-data: 700ms;
   color-scheme: light;
   --paper: #eceee8;
   --panel: #f8f8f4;
@@ -99,6 +104,12 @@
 }
 
 @theme {
+  /* motion: mirrors src/lib/motion.ts */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.5, 0, 0.75, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
   --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Funnel Display Variable", "Instrument Sans Variable", ui-sans-serif, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
@@ -171,7 +182,7 @@
 */
 html, body {
   background: var(--paper);
-  transition: background-color 0.6s ease;
+  transition: background-color var(--dur-data) var(--ease-in-out);
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: 16px;
@@ -205,10 +216,10 @@ body { margin: 0; min-height: 100svh; overflow-x: clip; }
 
 /* a world that just earned its chain: its tag arrives with a single soft swell */
 @keyframes fresh-chain { 0% { transform: translateX(-50%) scale(0.9); box-shadow: 0 0 0 0 rgb(196 239 58 / 0.6); } 60% { transform: translateX(-50%) scale(1.04); box-shadow: 0 0 0 10px rgb(196 239 58 / 0); } 100% { transform: translateX(-50%) scale(1); } }
-.fresh-chain { animation: fresh-chain 1.4s cubic-bezier(0.16, 1, 0.3, 1) 1; }
+.fresh-chain { animation: fresh-chain 1.4s var(--ease-out) 1; }
 
 @keyframes fade-in { from { opacity: 0.35; transform: translateY(2px); } }
-.fade-in { animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.fade-in { animation: fade-in var(--dur-base) var(--ease-out); }
 
 @media (prefers-reduced-motion: reduce) {
   .breathe, .ping::after, .fade-in, .fresh-chain { animation: none !important; }
@@ -216,10 +227,10 @@ body { margin: 0; min-height: 100svh; overflow-x: clip; }
 
 @keyframes tick-up { from { color: var(--green); } }
 @keyframes tick-down { from { color: var(--red); } }
-.tick-up-0 { animation: tick-up 0.9s ease-out; }
-.tick-up-1 { animation: tick-up 0.9s ease-out; animation-name: tick-up, none; }
-.tick-down-0 { animation: tick-down 0.9s ease-out; }
-.tick-down-1 { animation: tick-down 0.9s ease-out; animation-name: tick-down, none; }
+.tick-up-0 { animation: tick-up var(--dur-data) var(--ease-out); }
+.tick-up-1 { animation: tick-up var(--dur-data) var(--ease-out); animation-name: tick-up, none; }
+.tick-down-0 { animation: tick-down var(--dur-data) var(--ease-out); }
+.tick-down-1 { animation: tick-down var(--dur-data) var(--ease-out); animation-name: tick-down, none; }
 @media (prefers-reduced-motion: reduce) {
   [class*="tick-up-"], [class*="tick-down-"] { animation: none !important; }
 }

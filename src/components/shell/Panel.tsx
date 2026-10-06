@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { m } from 'motion/react'
+import { m, useReducedMotion } from 'motion/react'
 import { cn } from '@/lib/cn'
 import { RAIL, useDocked, useMedia } from '@/lib/useMedia'
 import { useCover, useField } from '@/field/Field'
-import { EASE_OUT } from '@/lib/motion'
+import { enter, surface } from '@/lib/motion'
 
 /*
   Where a page's content lives, laid over the Field.
@@ -14,10 +14,28 @@ import { EASE_OUT } from '@/lib/motion'
     pulled all the way up, the Field stops drawing to save battery.
 */
 
-const widths = { md: 'lg:w-[440px]', lg: 'lg:w-[min(620px,calc(100vw-320px))]', xl: 'lg:w-[min(760px,calc(100vw-320px))]' }
+const widths = { md: () => 440, lg: (vw: number) => Math.min(620, vw - 320), xl: (vw: number) => Math.min(760, vw - 320) }
+
+/*
+  The column is one surface for the whole visit, even though each page renders its own:
+  it slides in once, then later pages keep it where it is, ease its width to theirs, and
+  only fade their content. No page makes a fresh entrance.
+*/
+let lastWidth: number | null = null
+let lastSheet: number | null = null
 
 const BAR = 52 // the top bar, plus the safe area above it
 const PEEK = 148 // how much sheet shows when it is down low
+
+function useViewportWidth() {
+  const [vw, setVw] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth))
+  useEffect(() => {
+    const on = () => setVw(window.innerWidth)
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
+  return vw
+}
 
 export function Panel({ children, width = 'md', rest = 0.46, label, className }: { children: ReactNode; width?: keyof typeof widths; rest?: number; label: string; className?: string }) {
   const wide = useDocked()
@@ -25,6 +43,14 @@ export function Panel({ children, width = 'md', rest = 0.46, label, className }:
   const rail = useMedia(RAIL)
   const col = useRef<HTMLDivElement>(null)
   useCover(col, 'right', wide)
+  const vw = useViewportWidth()
+  const px = Math.round(rail ? widths[width](vw) : Math.min(400, vw * 0.5))
+  // the first panel of the visit arrives; the rest take over from the one before
+  const [from] = useState(() => lastWidth)
+  const still = useReducedMotion()
+  useEffect(() => {
+    lastWidth = px
+  }, [px])
 
   if (wide) {
     return (
@@ -32,15 +58,17 @@ export function Panel({ children, width = 'md', rest = 0.46, label, className }:
         ref={col}
         aria-label={label}
         className={cn(
-          'docked sheet fixed z-10 flex flex-col overflow-hidden rounded-card transition-[width] duration-500 ease-[cubic-bezier(.16,1,.3,1)]',
-          rail ? ['top-3 right-3 bottom-3', widths[width]] : 'top-[calc(60px+env(safe-area-inset-top,0px))] right-[max(8px,env(safe-area-inset-right,0px))] bottom-2 w-[min(400px,50vw)]',
+          'docked sheet fixed z-10 flex flex-col overflow-hidden rounded-card',
+          rail ? 'top-3 right-3 bottom-3' : 'top-[calc(60px+env(safe-area-inset-top,0px))] right-[max(8px,env(safe-area-inset-right,0px))] bottom-2',
           className,
         )}
-        initial={{ opacity: 0, x: 16 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.45, ease: EASE_OUT }}
+        initial={from === null ? { opacity: 0, x: 16, width: px } : { width: from }}
+        animate={{ opacity: 1, x: 0, width: px }}
+        transition={still ? { duration: 0 } : surface}
       >
-        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+        <m.div className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain" initial={from === null ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={enter}>
+          {children}
+        </m.div>
       </m.aside>
     )
   }
@@ -58,7 +86,17 @@ function Sheet({ children, rest, label, className }: { children: ReactNode; rest
   const engine = useField()
   // the room under the top bar, and how much of it the sheet covers now
   const [room, setRoom] = useState(() => (typeof window === 'undefined' ? 700 : window.innerHeight - BAR))
-  const [h, setH] = useState(() => Math.round((typeof window === 'undefined' ? 700 : window.innerHeight) * rest))
+  const restH = Math.round((typeof window === 'undefined' ? 700 : window.innerHeight) * rest)
+  // a later page's sheet starts where the last one was, then glides to its own resting place
+  const [prev] = useState(() => lastSheet)
+  const [h, setH] = useState(() => prev ?? restH)
+  useEffect(() => {
+    if (prev === null) return
+    const raf = requestAnimationFrame(() => setH(restH))
+    return () => cancelAnimationFrame(raf)
+    // once, on arrival
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [dragging, setDragging] = useState(false)
   useCover(peek, 'bottom')
 
@@ -83,6 +121,9 @@ function Sheet({ children, rest, label, className }: { children: ReactNode; rest
   })
   // never taller than the room, if the screen turns or shrinks
   const shown = Math.min(h, stops.full)
+  useEffect(() => {
+    lastSheet = shown
+  }, [shown])
 
   // the Field stops drawing while the sheet covers it all
   useEffect(() => {
@@ -163,10 +204,10 @@ function Sheet({ children, rest, label, className }: { children: ReactNode; rest
         ref={sheet}
         aria-label={label}
         className={cn('sheet fixed inset-x-0 bottom-0 z-10 flex flex-col overflow-hidden rounded-t-[20px]', className)}
-        style={{ height: stops.full, transform: `translateY(${stops.full - shown}px)`, transition: dragging || reduced ? 'none' : 'transform 0.42s cubic-bezier(.16,1,.3,1)' }}
-        initial={{ opacity: 0 }}
+        style={{ height: stops.full, transform: `translateY(${stops.full - shown}px)`, transition: dragging || reduced ? 'none' : 'transform var(--dur-calm) var(--ease-out)' }}
+        initial={prev === null ? { opacity: 0 } : false}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, ease: EASE_OUT }}
+        transition={surface}
       >
         <div data-grab className="flex h-6 shrink-0 justify-center">
           <button
@@ -179,7 +220,9 @@ function Sheet({ children, rest, label, className }: { children: ReactNode; rest
         </div>
         {/* only the part on screen scrolls: the hidden part below is padding */}
         <div ref={scroller} className="no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ paddingBottom: `calc(${stops.full - shown}px + env(safe-area-inset-bottom, 0px))` }}>
-          {children}
+          <m.div initial={prev === null ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={enter}>
+            {children}
+          </m.div>
         </div>
       </m.section>
       {/* when the sheet is up, a way straight back to the map */}

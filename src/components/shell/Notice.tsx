@@ -4,7 +4,7 @@ import { AnimatePresence, m } from 'motion/react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useFailures, useGraduations, useWorlds } from '@/lib/sim'
-import { EASE_OUT } from '@/lib/motion'
+import { RISE, exit, surface } from '@/lib/motion'
 
 /**
  * When something big happens to a world while you're here (it earns its chain, or misses
@@ -40,10 +40,10 @@ export function MomentNotice() {
           <m.div
             key={w.id + shown.kind}
             className="ink-card pointer-events-auto flex items-center gap-3 rounded-full py-2 pr-2 pl-4 text-[13.5px] shadow-[0_12px_40px_-12px_rgb(20_24_19/0.6)]"
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -RISE }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.4, ease: EASE_OUT }}
+            exit={{ opacity: 0, y: -6, transition: exit }}
+            transition={surface}
           >
             <span className={cn('size-2 shrink-0 rounded-full', shown.kind === 'chain' ? 'bg-sprout' : 'bg-[#ff8a6b]')} />
             {shown.kind === 'chain' ? (
