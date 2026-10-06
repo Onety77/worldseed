@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { Minus, Moon, Plus, Sun } from 'lucide-react'
 import { toggleTheme, useTheme } from '@/lib/theme'
 import { cn } from '@/lib/cn'
-import { useMedia } from '@/lib/useMedia'
+import { useDocked } from '@/lib/useMedia'
 import { useField, useInsets } from '@/field/Field'
 
 /**
@@ -13,7 +13,7 @@ import { useField, useInsets } from '@/field/Field'
 export function MapControls() {
   const engine = useField()
   const inset = useInsets()
-  const wide = useMedia('(min-width: 1024px)')
+  const wide = useDocked()
   const { pathname } = useLocation()
   const needle = useRef<SVGGElement>(null)
   const theme = useTheme()

@@ -101,3 +101,20 @@ export function Stat({ label, children, className }: { label: ReactNode; childre
     </div>
   )
 }
+
+/** When a list has nothing in it: a quiet survey mark, a plain line, and what to do next. */
+export function Empty({ title, children, action, className }: { title: string; children?: ReactNode; action?: ReactNode; className?: string }) {
+  return (
+    <div className={cn('grid justify-items-center rounded-[12px] px-5 py-7 text-center ring-1 ring-line ring-inset', className)}>
+      <svg viewBox="0 0 48 28" className="h-7 w-12 text-ink-4" aria-hidden>
+        <ellipse cx="24" cy="18" rx="22" ry="9" fill="none" stroke="currentColor" strokeDasharray="2 3" />
+        <ellipse cx="24" cy="17" rx="13" ry="5.5" fill="none" stroke="currentColor" />
+        <path d="M24 16V4" stroke="currentColor" strokeWidth="1.2" />
+        <path d="M24 4h7l-2 2.2 2 2.2h-7" fill="var(--sprout)" stroke="currentColor" strokeWidth="0.8" />
+      </svg>
+      <p className="mt-2.5 text-[14px] font-semibold">{title}</p>
+      {children && <p className="mt-1 max-w-[36ch] text-[13px] text-ink-3">{children}</p>}
+      {action && <div className="mt-3">{action}</div>}
+    </div>
+  )
+}

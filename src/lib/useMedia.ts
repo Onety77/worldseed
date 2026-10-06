@@ -11,3 +11,9 @@ export function useMedia(query: string, initial = true) {
   }, [query])
   return on
 }
+
+/** Screens wide enough for the rail on the left. */
+export const RAIL = '(min-width: 1024px)'
+/** Screens where a page docks to the side: wide ones, and phones or small tablets held sideways. */
+const DOCK = '(min-width: 1024px), (min-width: 600px) and (orientation: landscape) and (max-height: 640px)'
+export const useDocked = () => useMedia(DOCK)

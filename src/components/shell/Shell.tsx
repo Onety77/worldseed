@@ -15,6 +15,10 @@ import { MapControls } from './MapControls'
 import { SearchPalette } from './Search'
 import { InboxPanel, useInboxFeed } from './Inbox'
 import { ConnectDialog } from '@/components/wallet/Connect'
+import { Toaster } from './Toaster'
+import { Keys } from './Keys'
+import { Crash } from './Crash'
+import { Arrive } from './Arrive'
 import { startMarket } from '@/lib/market'
 import { getState } from '@/lib/sim'
 
@@ -24,6 +28,7 @@ import { getState } from '@/lib/sim'
  */
 export function Shell() {
   const wide = useMedia('(min-width: 1024px)')
+  const { pathname } = useLocation()
   useInboxFeed()
   useEffect(() => startMarket(() => getState().worlds.map((w) => w.id)), [])
   return (
@@ -36,13 +41,18 @@ export function Shell() {
       <MomentNotice />
       <MapControls />
       <main id="content" tabIndex={-1} className="outline-none">
-        <Outlet />
+        <Crash key={pathname}>
+          <Outlet />
+        </Crash>
       </main>
       {/* after the page in reading order; drawn under the panels */}
       <FieldLabels />
       <SearchPalette />
       <InboxPanel />
       <ConnectDialog />
+      <Toaster />
+      <Keys />
+      <Arrive />
     </FieldProvider>
   )
 }

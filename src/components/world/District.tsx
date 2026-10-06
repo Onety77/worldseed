@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
-import { DoorOpen, LogOut } from 'lucide-react'
+import { DoorOpen, History, LogOut } from 'lucide-react'
 import type { World } from '@/lib/types'
 import { cn } from '@/lib/cn'
-import { useMedia } from '@/lib/useMedia'
+import { useDocked } from '@/lib/useMedia'
 import { jobs } from '@/lib/civic'
 import { claimed } from '@/lib/wallet'
 import { count, date, usd } from '@/lib/format'
@@ -31,9 +31,9 @@ export function useDistrict(w: World, inside: boolean) {
 }
 
 /** The button that takes you in, and back out. Stands in the open corner of the Field. */
-export function StepInside({ w, inside, onToggle }: { w: World; inside: boolean; onToggle: () => void }) {
+export function StepInside({ w, inside, onToggle, onReplay }: { w: World; inside: boolean; onToggle: () => void; onReplay: () => void }) {
   const inset = useInsets()
-  const wide = useMedia('(min-width: 1024px)')
+  const wide = useDocked()
   const open = jobs.filter((j) => j.worldId === w.id && j.status !== 'paid').length
   const style = wide ? { left: inset.left + 16, bottom: inset.bottom + 16 } : { left: 10, top: inset.top + 10 }
   return (
@@ -42,6 +42,11 @@ export function StepInside({ w, inside, onToggle }: { w: World; inside: boolean;
         {inside ? <LogOut className="size-4" /> : <DoorOpen className="size-4" />}
         {inside ? `Back out of ${w.name}` : `Step inside ${w.name}`}
       </button>
+      {!inside && (
+        <button onClick={onReplay} className="flex h-9 items-center gap-2 rounded-full bg-raised/92 px-3.5 text-[13px] font-semibold shadow-[0_0_0_1px_var(--line-2),0_10px_30px_-14px_rgb(20_24_19/0.55)] backdrop-blur-sm hover-device:hover:bg-raised">
+          <History className="size-4" /> Replay its life
+        </button>
+      )}
       <AnimatePresence>
         {inside && wide && (
           <m.p className="sheet rounded-[10px] px-3 py-2 text-[12.5px] text-ink-2" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.3, ease: EASE_OUT }}>

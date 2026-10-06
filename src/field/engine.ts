@@ -266,7 +266,10 @@ export class FieldEngine {
   private water: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>
   private bridges = new THREE.Group()
   private towns = new THREE.Group()
+  private lostListeners = new Set<() => void>()
   private settlements = new Map<string, { key: string; group: THREE.Group; rise: number }>()
+  /** a world being replayed: its hill follows the scrubber instead of its live shape */
+  private replay: { id: string; height: number; radius: number; tiers: number; moat: number; build: number } | null = null
   /** uniforms every building shares: the night, the haze, the fog */
   private shared!: Shared
   private night = { k: 0, goal: 0 }
@@ -315,6 +318,14 @@ export class FieldEngine {
     this.canvas = this.renderer.domElement
     this.canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none'
     container.appendChild(this.canvas)
+    // if the GPU drops the context (a driver reset, too many tabs), stop and say so
+    this.canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault()
+      cancelAnimationFrame(this.raf)
+      this.raf = 0
+      this.paused = true
+      this.lostListeners.forEach((f) => f())
+    })
 
     const common = {
       uPaper: { value: PAPER },
@@ -496,6 +507,14 @@ export class FieldEngine {
     this.zoom(f)
   }
 
+  /** move the view across the ground by a screen distance, for arrow keys */
+  nudge(dx: number, dy: number) {
+    this.interacted = performance.now()
+    this.vel = { tx: 0, tz: 0, az: 0 }
+    this.panBy(dx, dy)
+    this.wake()
+  }
+
   /** turn the Field by an angle (radians) */
   turn(a: number) {
     this.interacted = performance.now()
@@ -527,6 +546,12 @@ export class FieldEngine {
     return this.project(x, y, z)
   }
 
+  /** show a world as it stood at some point in its past; null hands it back to the present */
+  setReplay(r: { id: string; height: number; radius: number; tiers: number; moat: number; build: number } | null) {
+    this.replay = r
+    this.wake()
+  }
+
   setFocus(id: string | null) {
     this.focus = id
     this.wake()
@@ -544,6 +569,14 @@ export class FieldEngine {
     this.hoverListeners.add(cb)
     return () => {
       this.hoverListeners.delete(cb)
+    }
+  }
+
+  /** the GPU took the drawing context away */
+  onLost(cb: () => void) {
+    this.lostListeners.add(cb)
+    return () => {
+      this.lostListeners.delete(cb)
     }
   }
 
@@ -709,11 +742,13 @@ export class FieldEngine {
     this.worlds.forEach((w, i) => {
       const s = this.shown.get(w.id)!
       const green = w.id === this.focus ? 1 : w.id === this.hover ? 0.55 : 0
-      const target = { height: w.hill.height, radius: w.hill.radius, tiers: w.hill.tiers, moat: w.hill.moat, green, muted: w.muted ? 1 : 0, trouble: w.trouble }
+      const rp = this.replay?.id === w.id ? this.replay : null
+      const target = { height: rp ? rp.height : w.hill.height, radius: rp ? rp.radius : w.hill.radius, tiers: rp ? rp.tiers : w.hill.tiers, moat: rp ? rp.moat : w.hill.moat, green, muted: w.muted ? 1 : 0, trouble: rp ? 0 : w.trouble }
       const ceremony = this.ceremonies.has(w.id)
       for (const key of Object.keys(target) as (keyof typeof target)[]) {
-        // growth is unhurried; the moat opens slower still, slowest of all during a ceremony
-        const speed = key === 'moat' ? 1 - Math.pow(ceremony ? 0.74 : 0.5, dt) : key === 'trouble' ? 1 - Math.pow(0.6, dt) : key === 'height' ? 1 - Math.pow(0.25 + (i % 5) * 0.05, dt) : g
+        // growth is unhurried; the moat opens slower still, slowest of all during a ceremony.
+        // a replay follows the scrubber closely
+        const speed = rp ? 1 - Math.pow(0.004, dt) : key === 'moat' ? 1 - Math.pow(ceremony ? 0.74 : 0.5, dt) : key === 'trouble' ? 1 - Math.pow(0.6, dt) : key === 'height' ? 1 - Math.pow(0.25 + (i % 5) * 0.05, dt) : g
         const next = this.reduced ? target[key] : lerp(s[key], target[key], speed)
         // settle exactly on the target, so what waits on "fully grown" gets there
         if (Math.abs(next - target[key]) > 0.002) {
@@ -750,6 +785,21 @@ export class FieldEngine {
       if (!st) continue
       const grown = Math.min(1, Math.max(0, (s.height / Math.max(w.hill.height, 0.01) - 0.9) / 0.1))
       const replaced = this.district?.input.id === w.id ? this.district.shown : 0
+      // in a replay, buildings stand as far as the world had built by then
+      if (this.replay?.id === w.id) {
+        const e = this.replay.build
+        // the town shrinks with the hill, so it sits on the slopes it had then
+        const rx = s.radius / Math.max(w.hill.radius, 0.01)
+        const ry = s.height / Math.max(w.hill.height, 0.01)
+        st.group.scale.set(rx, ry, rx)
+        st.group.position.set(w.hill.x * (1 - rx), 0, w.hill.z * (1 - rx))
+        setLook(st.group, e, (1 - s.muted * 0.75) * (1 - replaced) * Math.min(1, e * 4))
+        continue
+      }
+      if (st.group.scale.y !== 1) {
+        st.group.scale.set(1, 1, 1)
+        st.group.position.set(0, 0, 0)
+      }
       // buildings rise out of the ground once the hill is up, then stay
       if (grown >= 0.97 && st.rise < 1) {
         st.rise = this.reduced ? 1 : Math.min(1, st.rise + dt * 0.7)

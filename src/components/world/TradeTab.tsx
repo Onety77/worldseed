@@ -14,6 +14,7 @@ import { Meter, Segmented } from '@/components/ui/bits'
 import { Ticking } from '@/components/motion/Ticking'
 import { connectOpen } from '@/components/wallet/Connect'
 import { Card, Section } from './parts'
+import { Who } from '@/components/ui/Who'
 
 export function TradeTab({ w }: { w: World }) {
   const live = usePrice(w.id)
@@ -255,7 +256,7 @@ function TapeList({ w }: { w: World }) {
             >
               <span className={cn('font-mono text-[11px] font-medium uppercase', t.side === 'buy' ? 'text-green' : 'text-red')}>{t.side}</span>
               <span className="truncate font-mono tabular">{usd(t.usd)}</span>
-              <span className={cn('truncate font-mono text-[11.5px]', t.who === 'you' ? 'font-semibold text-ink' : 'text-ink-3')}>{t.who}</span>
+              <Who handle={t.who} className={cn('truncate font-mono text-[11.5px]', t.who === 'you' ? 'font-semibold text-ink' : 'text-ink-3')} />
               <span className="text-right font-mono text-[11px] text-ink-3 tabular">{ago(t.at, now)}</span>
             </m.li>
           ))}
@@ -276,7 +277,7 @@ function Holders({ w }: { w: World }) {
       {rows.map((h) => (
         <div key={h.who} className={cn('grid grid-cols-[1fr_88px_56px] items-center gap-3 px-3.5 py-2.5', h.note === 'you' && 'bg-sprout-soft')}>
           <span className="min-w-0 truncate text-[13px]">
-            <span className={cn(h.note && h.note !== 'you' ? 'font-semibold' : 'font-mono text-[12px]', h.note === 'you' && 'font-semibold')}>{h.who}</span>
+            <Who handle={h.who} className={cn(h.note && h.note !== 'you' ? 'font-semibold' : 'font-mono text-[12px]', h.note === 'you' && 'font-semibold')} />
             {h.note && h.note !== 'you' && <span className="ml-1.5 text-[11.5px] text-ink-3">{h.note}</span>}
           </span>
           <Meter value={h.share / top} />

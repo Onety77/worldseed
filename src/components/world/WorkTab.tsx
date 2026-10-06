@@ -9,6 +9,8 @@ import { claimed, claimJob, wallet } from '@/lib/wallet'
 import { buttonClass } from '@/lib/button'
 import { connectOpen } from '@/components/wallet/Connect'
 import { Section } from './parts'
+import { Who } from '@/components/ui/Who'
+import { Empty } from '@/components/ui/bits'
 
 export function WorkTab({ w }: { w: World }) {
   const list = jobs.filter((j) => j.worldId === w.id)
@@ -18,6 +20,11 @@ export function WorkTab({ w }: { w: World }) {
         {list.map((j) => (
           <JobRow key={j.id} j={j} />
         ))}
+        {!list.length && (
+          <li>
+            <Empty title="No jobs posted yet">The governor posts work here when its charter needs something it cannot build itself.</Empty>
+          </li>
+        )}
       </ul>
     </Section>
   )
@@ -53,7 +60,7 @@ export function JobRow({ j, world }: { j: Job; world?: World }) {
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px]">
         <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize', jobTone[j.status])}>{j.status}</span>
         <span className="text-ink-3">{j.category}</span>
-        {j.claimant && <span className="font-mono text-[11px] text-ink-2">{j.claimant}</span>}
+        {j.claimant && <Who handle={j.claimant} className="font-mono text-[11px] text-ink-2" />}
         <span className="ml-auto font-mono text-[11px] text-ink-3 tabular">{j.status === 'paid' ? 'released' : j.status === 'challenge window' ? `releases in ${span(j.endsAt - now)}` : `closes in ${span(j.endsAt - now)}`}</span>
       </div>
       {j.status === 'open' && (

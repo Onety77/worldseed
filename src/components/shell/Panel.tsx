@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { m } from 'motion/react'
 import { cn } from '@/lib/cn'
-import { useMedia } from '@/lib/useMedia'
+import { RAIL, useDocked, useMedia } from '@/lib/useMedia'
 import { useCover, useField } from '@/field/Field'
 import { EASE_OUT } from '@/lib/motion'
 
@@ -20,7 +20,9 @@ const BAR = 52 // the top bar, plus the safe area above it
 const PEEK = 148 // how much sheet shows when it is down low
 
 export function Panel({ children, width = 'md', rest = 0.46, label, className }: { children: ReactNode; width?: keyof typeof widths; rest?: number; label: string; className?: string }) {
-  const wide = useMedia('(min-width: 1024px)')
+  const wide = useDocked()
+  // held sideways on a phone: docked beside the map, under the top bar
+  const rail = useMedia(RAIL)
   const col = useRef<HTMLDivElement>(null)
   useCover(col, 'right', wide)
 
@@ -29,7 +31,11 @@ export function Panel({ children, width = 'md', rest = 0.46, label, className }:
       <m.aside
         ref={col}
         aria-label={label}
-        className={cn('sheet fixed top-3 right-3 bottom-3 z-10 flex flex-col overflow-hidden rounded-card transition-[width] duration-500 ease-[cubic-bezier(.16,1,.3,1)]', widths[width], className)}
+        className={cn(
+          'docked sheet fixed z-10 flex flex-col overflow-hidden rounded-card transition-[width] duration-500 ease-[cubic-bezier(.16,1,.3,1)]',
+          rail ? ['top-3 right-3 bottom-3', widths[width]] : 'top-[calc(60px+env(safe-area-inset-top,0px))] right-[max(8px,env(safe-area-inset-right,0px))] bottom-2 w-[min(400px,50vw)]',
+          className,
+        )}
         initial={{ opacity: 0, x: 16 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.45, ease: EASE_OUT }}
@@ -144,5 +150,5 @@ function Sheet({ children, rest, label, className }: { children: ReactNode; rest
 
 /** A panel's own heading row, sticky inside the panel's scroll. */
 export function PanelHead({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('sticky top-6 z-[5] border-b border-line bg-panel/95 px-5 pt-3 pb-3 backdrop-blur-md lg:top-0 lg:px-6 lg:pt-5', className)}>{children}</div>
+  return <div className={cn('sticky top-6 z-[5] border-b border-line bg-panel/95 px-5 pt-3 pb-3 backdrop-blur-md docked:top-0 lg:top-0 lg:px-6 lg:pt-5', className)}>{children}</div>
 }

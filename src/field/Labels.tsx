@@ -24,8 +24,10 @@ export function Labels({ worlds, focus, detail, dim = false, hide = null, fresh 
   // tags that win the space: the focused world, and any that just earned a chain
   const first = useRef(new Set<string>())
   useEffect(() => {
-    first.current = new Set([...(fresh ?? []), ...(focus ? [focus] : [])])
-  }, [fresh, focus])
+    // while a page dims the map, the tags it has something to say about come first too
+    const said = dim && detail ? worlds.filter((w) => detail(w)).map((w) => w.id) : []
+    first.current = new Set([...(fresh ?? []), ...(focus ? [focus] : []), ...said])
+  }, [fresh, focus, dim, detail, worlds])
   const sizes = useRef(new Map<string, { w: number; h: number }>())
 
   useEffect(() => {
@@ -104,7 +106,7 @@ export function Labels({ worlds, focus, detail, dim = false, hide = null, fresh 
             className="group absolute top-0 left-0 opacity-0 transition-opacity duration-300"
             style={{ visibility: 'hidden' }}
           >
-            <span className={cn('contents', dim && !on && '[&>a]:opacity-80')}>
+            <span className={cn('contents', dim && !on && (d ? '[&>a]:opacity-95' : '[&>a]:opacity-55'))}>
             <Link
               to={`/w/${w.id}`}
               onMouseEnter={() => engine.setHover(w.id)}

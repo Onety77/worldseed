@@ -7,7 +7,7 @@ import { usd } from '@/lib/format'
 import { useFieldView } from '@/field/Field'
 import { useLabels } from '@/components/shell/Shell'
 import { Panel, PanelHead } from '@/components/shell/Panel'
-import { Segmented, Stat } from '@/components/ui/bits'
+import { Empty, Segmented, Stat } from '@/components/ui/bits'
 import { JobRow } from '@/components/world/WorkTab'
 
 type F = 'live' | Job['status']
@@ -56,6 +56,11 @@ export function JobsLens() {
         {list.map((j) => (
           <JobRow key={j.id} j={j} world={worlds.find((w) => w.id === j.worldId)} />
         ))}
+        {!list.length && (
+          <li>
+            <Empty title="No jobs at this stage">Try another filter. Governors post new work as their charters need it.</Empty>
+          </li>
+        )}
       </ul>
     </Panel>
   )

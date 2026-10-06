@@ -12,6 +12,7 @@ import { Panel, PanelHead } from '@/components/shell/Panel'
 import { Segmented, Stat } from '@/components/ui/bits'
 import { EvidenceRow } from '@/components/evidence/EvidenceRow'
 import { getState } from '@/lib/sim'
+import { Empty } from '@/components/ui/bits'
 
 export function EvidenceLens() {
   useTitle('Evidence')
@@ -76,6 +77,7 @@ export function EvidenceLens() {
           })}
         </AnimatePresence>
       </ul>
+      {!list.length && <Empty className="mx-4 mb-8 lg:mx-5" title="No bundles here right now">Nothing with this verdict in the live log. New proofs arrive every few seconds.</Empty>}
       {list.length > limit && (
         <div className="px-5 pb-8">
           <button onClick={() => setLimit((l) => l + 30)} className={buttonClass('outline', 'md', 'w-full')}>

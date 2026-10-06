@@ -16,11 +16,12 @@ import { StageFilter } from './StageFilter'
 import { Legend } from './Legend'
 import { InboxButton } from './Inbox'
 import { searchOpen } from './Search'
+import { keysOpen } from './Keys'
 import { Moon, Search as SearchIcon, Sun, Wallet } from 'lucide-react'
 import { toggleTheme, useTheme } from '@/lib/theme'
 import { usePortfolio } from '@/lib/wallet'
 import { connectOpen } from '@/components/wallet/Connect'
-import { Identicon } from '@/pages/You'
+import { Identicon } from '@/components/ui/Identicon'
 
 /**
  * The survey instrument on the left of wide screens: who we are, the one thing to do
@@ -41,6 +42,7 @@ export function Rail() {
     jobs: `${openJobs.length} open`,
     evidence: 'live',
     governance: String(proposals.filter((p) => p.status === 'voting').length + challenges.filter((c) => c.status === 'open').length),
+    rankings: '7 boards',
   }
 
   return (
@@ -120,7 +122,12 @@ export function Rail() {
           <Link to="/how" className="flex items-center gap-1 font-medium text-ink-2 hover-device:hover:text-ink">
             How it works <ArrowUpRight className="size-3.5" />
           </Link>
-          <ThemeButton />
+          <span className="flex items-center gap-1">
+            <button onClick={() => keysOpen.set(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" className="grid size-7 place-items-center rounded-[7px] font-mono text-[12px] font-semibold text-ink-3 ring-1 ring-line ring-inset hover-device:hover:bg-hover hover-device:hover:text-ink">
+              ?
+            </button>
+            <ThemeButton />
+          </span>
         </div>
       </div>
     </nav>

@@ -11,16 +11,19 @@ import { usd } from '@/lib/format'
 import { useField } from '@/field/Field'
 import { Dialog } from '@/components/ui/Dialog'
 import { WorldMark } from '@/components/ui/WorldMark'
+import { Avatar, profilePath } from '@/components/ui/Who'
+import { people } from '@/data/people'
 
 export const searchOpen = createStore(false)
 
 interface Hit {
   id: string
-  group: 'Worlds' | 'Jobs' | 'Proofs' | 'Go to'
+  group: 'Worlds' | 'People' | 'Jobs' | 'Proofs' | 'Go to'
   title: string
   note: string
   href: string
   worldId?: string
+  handle?: string
 }
 
 /** Search everything: worlds, jobs, recent proofs and pages. ⌘K or / opens it anywhere. */
@@ -64,6 +67,12 @@ export function SearchPalette() {
       .sort((a, b) => score(a) - score(b))
       .slice(0, t ? 6 : 4)
       .map((x) => ({ id: `w-${x.id}`, group: 'Worlds', title: x.name, note: `${x.ticker} · ${preset(x.template).name}`, href: `/w/${x.id}`, worldId: x.id }))
+    const who: Hit[] = t
+      ? people
+          .filter((x) => x.handle.replace('agent:', '').toLowerCase().includes(t) || word.test(x.role))
+          .slice(0, 4)
+          .map((x) => ({ id: `u-${x.handle}`, group: 'People', title: x.handle, note: `${x.kind === 'agent' ? 'Agent' : 'Person'} · ${x.role}`, href: profilePath(x.handle), handle: x.handle }))
+      : []
     const j: Hit[] = t
       ? jobs
           .filter((x) => x.status !== 'paid' && (word.test(x.title) || word.test(x.category)))
@@ -82,7 +91,7 @@ export function SearchPalette() {
       { id: 'p-you', group: 'Go to', title: 'You', note: 'Your holdings, votes and jobs', href: '/you' },
       { id: 'p-how', group: 'Go to', title: 'How it works', note: 'Stages, the governor loop, the treasury', href: '/how' },
     ] as Hit[]).filter((x) => has(x.title, x.note))
-    return [...w, ...j, ...p, ...pages.slice(0, t ? 4 : 8)]
+    return [...w, ...who, ...j, ...p, ...pages.slice(0, t ? 4 : 8)]
   }, [q, worlds, ev])
 
   const close = () => {
@@ -123,8 +132,8 @@ export function SearchPalette() {
               setI((x) => Math.max(0, x - 1))
             } else if (e.key === 'Enter' && hits[at]) go(hits[at])
           }}
-          placeholder="Search worlds, jobs, proofs"
-          aria-label="Search worlds, jobs and proofs"
+          placeholder="Search worlds, people, jobs, proofs"
+          aria-label="Search worlds, people, jobs and proofs"
           aria-controls="search-results"
           aria-activedescendant={hits[at] ? `hit-${hits[at].id}` : undefined}
           role="combobox"
@@ -149,7 +158,7 @@ export function SearchPalette() {
                 onClick={() => go(h)}
                 className={cn('flex cursor-pointer items-center gap-3 rounded-[10px] px-2.5 py-2', k === at && 'bg-raised shadow-[0_0_0_1px_var(--line)]')}
               >
-                {h.group === 'Worlds' && w ? <WorldMark world={w} className="size-8" /> : <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-ink/[0.05] font-mono text-[10px] text-ink-3 uppercase">{h.group.slice(0, 2)}</span>}
+                {h.group === 'Worlds' && w ? <WorldMark world={w} className="size-8" /> : h.handle ? <Avatar handle={h.handle} /> : <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-ink/[0.05] font-mono text-[10px] text-ink-3 uppercase">{h.group.slice(0, 2)}</span>}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14px] font-semibold">{h.title}</span>
                   <span className="block truncate text-[12px] text-ink-3">{h.note}</span>

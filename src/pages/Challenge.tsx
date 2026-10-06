@@ -21,6 +21,7 @@ import { WorldMark } from '@/components/ui/WorldMark'
 import { VerdictTag } from '@/components/ui/bits'
 import { Card, Section } from '@/components/world/parts'
 import { NotFound } from './NotFound'
+import { Who } from '@/components/ui/Who'
 
 const RULES_AT = 66 // seconds after filing, for a case you opened in this visit
 const SETTLES_AT = 72
@@ -122,7 +123,7 @@ function Case({ c, w }: { c: Challenge; w: World }) {
           <div className="grid gap-2 sm:grid-cols-2">
             <Card className="p-3.5 ring-red/30">
               <p className="label">Challenger</p>
-              <p className="mt-1 text-[15px] font-semibold">{live ? 'You' : c.by}</p>
+              <p className="mt-1 text-[15px] font-semibold">{live ? 'You' : <Who handle={c.by} />}</p>
               <p className="mt-2 font-display text-[26px] leading-none font-[560] tabular">{usd(c.bondUsd)}</p>
               <p className="mt-1 text-[12px] text-ink-3">bond posted</p>
               <p className="mt-3 text-[13px] text-ink-2">“{c.claim}”</p>
@@ -148,7 +149,9 @@ function Case({ c, w }: { c: Challenge; w: World }) {
                       {p.kind === 'Agent' ? <Scale className="size-4" /> : <Gavel className="size-4" />}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-mono text-[13px] font-medium">{p.who}</p>
+                      <p className="truncate font-mono text-[13px] font-medium">
+                        <Who handle={p.who} />
+                      </p>
                       <p className="text-[11.5px] text-ink-3">{p.kind}{p.model ? ` · ${p.model}` : ''}</p>
                     </div>
                     <AnimatePresence mode="wait" initial={false}>

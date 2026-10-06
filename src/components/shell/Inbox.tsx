@@ -10,6 +10,7 @@ import { wallet } from '@/lib/wallet'
 import { ago } from '@/lib/format'
 import { buttonClass } from '@/lib/button'
 import { Dialog } from '@/components/ui/Dialog'
+import { Empty } from '@/components/ui/bits'
 
 const inboxOpen = createStore(false)
 
@@ -58,6 +59,11 @@ export function InboxPanel() {
         )}
       </div>
       <ul className="max-h-[min(64vh,520px)] overflow-y-auto p-2">
+        {!list.length && (
+          <li className="p-2">
+            <Empty title="Nothing yet">Votes, trades, jobs and big moments on the worlds you watch will land here.</Empty>
+          </li>
+        )}
         {list.map((n, k) => {
           const I = icon[n.kind]
           return (

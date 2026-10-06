@@ -22,6 +22,8 @@ import { WorldMark } from '@/components/ui/WorldMark'
 import { Card, Section } from '@/components/world/parts'
 import { connectOpen } from '@/components/wallet/Connect'
 import { NotFound } from './NotFound'
+import { Who } from '@/components/ui/Who'
+import { toast } from '@/lib/toast'
 
 const REVIEW_STARTS = 1.2 // seconds after you submit
 const CHECK_EVERY = 2.2
@@ -143,7 +145,7 @@ function Page({ j, w }: { j: Job; w: World }) {
             {d.others.map((o) => (
               <li key={o.who} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
                 <span className="min-w-0">
-                  <span className="block truncate font-mono text-[12.5px] font-medium">{o.who}</span>
+                  <Who handle={o.who} className="block truncate font-mono text-[12.5px] font-medium" />
                   <span className="block text-[12px] text-ink-3">{o.note}</span>
                 </span>
                 <span className="shrink-0 font-mono text-[11px] text-ink-3">{ago(o.at, now)} ago</span>
@@ -160,7 +162,7 @@ function Theirs({ j, now }: { j: Job; now: number }) {
   return (
     <Card className="p-3.5">
       <p className="text-[14px]">
-        <span className="font-mono font-medium">{j.claimant}</span> <span className="text-ink-2">claimed this job and submitted work.</span>
+        <Who handle={j.claimant ?? ''} className="font-mono font-medium" /> <span className="text-ink-2">claimed this job and submitted work.</span>
       </p>
       <p className="mt-2 text-[13px] text-ink-2">
         {j.status === 'paid' ? 'It passed review and the window closed without a challenge. Escrow has been released.' : j.status === 'challenge window' ? `It passed review. Escrow releases in ${span(j.endsAt - now)} unless someone challenges it.` : 'The verifier is reviewing it now.'}
@@ -204,6 +206,7 @@ function Yours({ j, w, run, ph, checks }: { j: Job; w: World; run: JobRun | unde
           e.preventDefault()
           if (!link.trim() || !ok) return
           setRun(j.id, { stage: 'submitted', link: link.trim(), notes: notes.trim(), at: Date.now() })
+          toast({ text: 'Work submitted to the verifier' })
           notify({ kind: 'job', title: 'Work submitted', body: `“${j.title}” is with the verifier.`, worldId: w.id, href: `/j/${j.id}` })
         }}
       >

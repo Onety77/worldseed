@@ -17,6 +17,7 @@
 */
 
 @custom-variant hover-device (@media (hover: hover));
+@custom-variant docked (&:where(.docked *));
 
 :root {
   color-scheme: light;
@@ -222,3 +223,65 @@ body { margin: 0; min-height: 100svh; overflow-x: clip; }
 @media (prefers-reduced-motion: reduce) {
   [class*="tick-up-"], [class*="tick-down-"] { animation: none !important; }
 }
+
+/* a person's mark: their hue, quiet by day, deep by night */
+.avatar {
+  background: hsl(var(--hue) 32% 86%);
+  color: hsl(var(--hue) 35% 22%);
+}
+:root[data-theme="dark"] .avatar {
+  background: hsl(var(--hue) 22% 26%);
+  color: hsl(var(--hue) 40% 88%);
+}
+
+/* the replay scrubber: a thin track, filled to the day shown, and a round handle */
+.scrub {
+  appearance: none;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+.scrub::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--ink) var(--k), color-mix(in srgb, var(--ink) 14%, transparent) var(--k));
+}
+.scrub::-moz-range-track {
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--ink) var(--k), color-mix(in srgb, var(--ink) 14%, transparent) var(--k));
+}
+.scrub::-webkit-slider-thumb {
+  appearance: none;
+  margin-top: -7.5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--sprout);
+  box-shadow: 0 0 0 1.5px var(--ink), 0 4px 10px -4px rgb(20 24 19 / 0.5);
+}
+.scrub::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sprout);
+  box-shadow: 0 0 0 1.5px var(--ink), 0 4px 10px -4px rgb(20 24 19 / 0.5);
+}
+.scrub:focus-visible { outline: none; }
+.scrub:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1.5px var(--ink), 0 0 0 5px color-mix(in srgb, var(--sprout) 55%, transparent); }
+
+/* the loading line, shared with the card in index.html */
+.arrive-line { position: relative; width: 120px; height: 2px; overflow: hidden; border-radius: 2px; }
+.arrive-line::before { content: ''; position: absolute; inset: 0; background: currentColor; opacity: 0.12; }
+.arrive-line::after { content: ''; position: absolute; inset: 0; width: 40%; background: currentColor; animation: arrive 1.4s cubic-bezier(.6, 0, .4, 1) infinite; }
+@keyframes arrive { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .arrive-line::after { animation: none; width: 100%; opacity: 0.4; } }
+
+/* skeleton bars: a slow sheen while a page loads */
+.skel {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ink) 6%, transparent) 30%, color-mix(in srgb, var(--ink) 11%, transparent) 50%, color-mix(in srgb, var(--ink) 6%, transparent) 70%) 0 0 / 300% 100%;
+  animation: skel 1.6s ease-in-out infinite;
+}
+@keyframes skel { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }

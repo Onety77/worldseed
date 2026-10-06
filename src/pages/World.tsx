@@ -5,7 +5,7 @@ import { ArrowLeft, Check, Copy } from 'lucide-react'
 import type { World } from '@/lib/types'
 import { cn } from '@/lib/cn'
 import { useNow } from '@/lib/clock'
-import { useTitle } from '@/lib/useTitle'
+import { useMeta, useTitle } from '@/lib/useTitle'
 import { HARROW_GRADUATES_AT, useWorld } from '@/lib/sim'
 import { readiness, runwayMonths } from '@/lib/rules'
 import { preset } from '@/lib/templates'
@@ -27,8 +27,11 @@ import { GovernanceTab } from '@/components/world/GovernanceTab'
 import { NotFound } from './NotFound'
 import { TradeTab } from '@/components/world/TradeTab'
 import { DistrictTags, StepInside, useDistrict } from '@/components/world/District'
+import { Replay } from '@/components/world/Replay'
 import { usePrice } from '@/lib/market'
 import { buttonClass } from '@/lib/button'
+import { Who } from '@/components/ui/Who'
+import { ShareButton } from '@/components/world/Share'
 
 const tabs = [
   { id: 'overview', name: 'Overview' },
@@ -50,6 +53,7 @@ export function WorldPage() {
 }
 
 function Dossier({ w }: { w: World }) {
+  useMeta(w.name, `${w.lore} ${w.ticker} is a ${w.stage} on WORLDSEED, run by its own AI governor.`, `${location.origin}/og/${w.id}.jpg`)
   const { hash: h } = useLocation()
   const nav = useNavigate()
   const fromHash = (x: string) => (tabs.some((t) => `#${t.id}` === x) ? (x.slice(1) as Tab) : null)
@@ -67,24 +71,30 @@ function Dossier({ w }: { w: World }) {
 
   // stepping inside: the Field moves in close and the district stands up
   const [inside, setInside] = useState(false)
+  const [replay, setReplay] = useState(false)
+  const closeReplay = useCallback(() => setReplay(false), [])
   useDistrict(w, inside)
   useFieldView({ kind: inside ? 'district' : 'world', id: w.id }, inside ? null : w.id)
   const none = useCallback(() => null, [])
   useLabels(none, inside ? null : w.id, true, inside ? w.id : null)
   useEffect(() => {
     if (!inside) return
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('[role="dialog"]') && setInside(false)
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || document.querySelector('[role="dialog"]')) return
+      e.preventDefault()
+      setInside(false)
+    }
     window.addEventListener('keydown', key)
     return () => window.removeEventListener('keydown', key)
   }, [inside])
 
   return (
     <>
-    <StepInside w={w} inside={inside} onToggle={() => setInside((v) => !v)} />
+    {replay ? <Replay w={w} onClose={closeReplay} /> : <StepInside w={w} inside={inside} onToggle={() => setInside((v) => !v)} onReplay={() => setReplay(true)} />}
     <DistrictTags w={w} inside={inside} onJob={(id) => nav(`/j/${id}`)} />
     <Panel label={`${w.name} dossier`} width="lg" rest={0.52}>
       <Header w={w} onTrade={() => choose('trade')} />
-      <div className="sticky top-6 z-[6] border-y border-line bg-panel/95 backdrop-blur-md lg:top-0">
+      <div className="sticky top-6 z-[6] border-y border-line bg-panel/95 backdrop-blur-md docked:top-0 lg:top-0">
         <div role="tablist" aria-label="Sections" className="no-scrollbar flex gap-1 overflow-x-auto px-3 lg:px-4">
           {tabs.map((t) => (
             <button
@@ -142,8 +152,9 @@ function Header({ w, onTrade }: { w: World; onTrade: () => void }) {
         <button onClick={back} className="-ml-2 flex h-8 items-center gap-1.5 rounded-[8px] px-2 text-[13px] font-semibold text-ink-2 hover-device:hover:bg-hover hover-device:hover:text-ink">
           <ArrowLeft className="size-4" /> Atlas
         </button>
-        <span className="font-mono text-[11px] tracking-wide text-ink-3">
-          Day {dayOf(w, now)} · by {w.creator}
+        <span className="flex items-center gap-1 font-mono text-[11px] tracking-wide text-ink-3">
+          Day {dayOf(w, now)} · by <Who handle={w.creator} className="text-ink-2" />
+          <ShareButton w={w} />
         </span>
       </div>
 

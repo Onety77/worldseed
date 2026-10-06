@@ -15,7 +15,10 @@ export function Dialog({ open, onClose, label, children, className, top = false 
     if (!open) return
     const back = document.activeElement as HTMLElement | null
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+      }
       if (e.key === 'Tab' && box.current) {
         // keep focus inside
         const f = box.current.querySelectorAll<HTMLElement>('button, a[href], input, textarea, [tabindex]:not([tabindex="-1"])')

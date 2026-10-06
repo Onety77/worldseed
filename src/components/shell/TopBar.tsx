@@ -15,7 +15,7 @@ import { toggleTheme, useTheme } from '@/lib/theme'
 import { usePortfolio } from '@/lib/wallet'
 import { usd } from '@/lib/format'
 import { connectOpen } from '@/components/wallet/Connect'
-import { Identicon } from '@/pages/You'
+import { Identicon } from '@/components/ui/Identicon'
 import { useCover } from '@/field/Field'
 
 /**
@@ -28,7 +28,7 @@ export function TopBar() {
   const box = useRef<HTMLDivElement>(null)
   useCover(box, 'top')
   const lens = lensFor(pathname)
-  const page: Record<string, string> = { w: 'World', p: 'Proposal', c: 'Challenge', j: 'Job' }
+  const page: Record<string, string> = { w: 'World', p: 'Proposal', c: 'Challenge', j: 'Job', u: 'Profile' }
   const here = lens?.name ?? page[pathname.split('/')[1]] ?? (pathname === '/seed' ? 'Seed a world' : pathname === '/how' ? 'How it works' : pathname === '/you' ? 'You' : 'Atlas')
 
   // close on navigation, outside press and Escape
@@ -40,7 +40,11 @@ export function TopBar() {
   useEffect(() => {
     if (!open) return
     const down = (e: PointerEvent) => !box.current?.contains(e.target as Node) && setOpen(false)
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      setOpen(false)
+    }
     window.addEventListener('pointerdown', down)
     window.addEventListener('keydown', key)
     return () => {

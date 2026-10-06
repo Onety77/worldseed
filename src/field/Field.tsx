@@ -21,6 +21,17 @@ export const useField = () => useContext(Ctx)
 
 /** which stages the Field shows at full strength; the rest are muted */
 export const fieldFilter = createStore<Stage | 'all'>('all')
+/** worlds a page wants lit (a profile's worlds, a ranking's top), the rest step back */
+const spotlight = createStore<string[] | null>(null)
+
+/** Light up just these worlds on the Field while the calling page is open. */
+export function useSpotlight(ids: string[] | null) {
+  const key = ids ? ids.join(',') : ''
+  useEffect(() => {
+    spotlight.set(key ? key.split(',') : null)
+    return () => spotlight.set(null)
+  }, [key])
+}
 /** panels laid over the Field, by side; the Field frames its subject in what is left */
 type Side = 'left' | 'right' | 'top' | 'bottom'
 const covers = createStore<Record<string, { side: Side; px: number }>>({})
@@ -67,36 +78,43 @@ export const draftHill = createStore<{ id: string; x: number; z: number; radius:
 export function FieldProvider({ children }: { children: ReactNode }) {
   const host = useRef<HTMLDivElement>(null)
   const [engine, setEngine] = useState<FieldEngine | null>(null)
-  const [failed, setFailed] = useState(false)
+  const [failed, setFailed] = useState<false | 'none' | 'lost'>(false)
+  // bumped to build the Field again after its context was lost
+  const [gen, setGen] = useState(0)
   const reduced = useReducedMotion()
 
   useEffect(() => {
     const el = host.current
     if (!el) return
     if (!webglAvailable()) {
-      setFailed(true)
+      setFailed('none')
       return
     }
     let e: FieldEngine
     try {
       e = new FieldEngine(el, window.innerWidth < 760 || (navigator.hardwareConcurrency ?? 8) < 4 || location.search.includes('field=low') ? 'low' : 'high')
     } catch {
-      setFailed(true)
+      setFailed('none')
       return
     }
     setEngine(e)
+    const offLost = e.onLost(() => {
+      setFailed('lost')
+      setEngine(null)
+    })
     if (import.meta.env.DEV) Object.assign(window, { __field: e })
     const ro = new ResizeObserver(() => e.resize())
     ro.observe(el)
     const vis = () => !document.hidden && e.wake()
     document.addEventListener('visibilitychange', vis)
     return () => {
+      offLost()
       ro.disconnect()
       document.removeEventListener('visibilitychange', vis)
       e.dispose()
       setEngine(null)
     }
-  }, [])
+  }, [gen])
 
   const theme = useTheme()
   const first = useRef(true)
@@ -112,8 +130,16 @@ export function FieldProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={engine}>
-      <div ref={host} aria-hidden className="fixed inset-0 z-0 overflow-hidden bg-paper">
-        {failed && <Fallback />}
+      <div ref={host} aria-hidden={!failed} className="fixed inset-0 z-0 overflow-hidden bg-paper">
+        {failed && (
+          <Fallback
+            lost={failed === 'lost'}
+            retry={() => {
+              setFailed(false)
+              setGen((g) => g + 1)
+            }}
+          />
+        )}
       </div>
       {engine && <Sync engine={engine} />}
       {children}
@@ -125,6 +151,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
 function Sync({ engine }: { engine: FieldEngine }) {
   const worlds = useWorlds()
   const filter = fieldFilter.use()
+  const lit = spotlight.use()
   const draft = draftHill.use()
   const pings = usePings()
   useGraduations()
@@ -135,7 +162,7 @@ function Sync({ engine }: { engine: FieldEngine }) {
     const list: FieldWorld[] = worlds.map((w) => ({
       id: w.id,
       hill: hillFor(w),
-      muted: filter !== 'all' && w.stage !== filter,
+      muted: (filter !== 'all' && w.stage !== filter) || (lit !== null && !lit.includes(w.id)),
       trouble: w.charter.objectives.some((o) => o.status === 'failed') ? 1 : w.charter.objectives.some((o) => o.status === 'challenged') ? 0.35 : 0,
       town: {
         template: w.template,
@@ -147,7 +174,7 @@ function Sync({ engine }: { engine: FieldEngine }) {
     }))
     if (draft) list.push({ id: draft.id, hill: { x: draft.x, z: draft.z, radius: draft.radius, height: draft.height, tiers: 1, moat: 0 }, muted: false, trouble: 0, town: { template: 'frontier', apps: 0, houses: 0, lit: 0, seed: true } })
     engine.setWorlds(list)
-  }, [engine, worlds, filter, draft, proven])
+  }, [engine, worlds, filter, lit, draft, proven])
   const cover = covers.use()
   useEffect(() => {
     const i = { left: 0, right: 0, top: 0, bottom: 0 }
@@ -181,7 +208,7 @@ export function useFieldView(view: View | null, focus: string | null = null) {
 }
 
 /** No WebGL: the same Field drawn flat from above, so every world can still be found and opened. */
-function Fallback() {
+function Fallback({ lost, retry }: { lost: boolean; retry: () => void }) {
   const worlds = useWorlds()
   const nav = useNavigate()
   const cover = covers.use()
@@ -219,6 +246,16 @@ function Fallback() {
         </text>
       ))}
     </svg>
+    <div className="absolute flex justify-center px-4" style={{ top: inset.top + 12, left: inset.left, right: inset.right }}>
+      <p className="sheet pointer-events-auto relative z-[11] flex items-center gap-3 rounded-[18px] py-1.5 pr-1.5 pl-4 text-[12.5px] text-ink-2">
+        {lost ? 'The 3D map stopped drawing, so here is the flat survey.' : 'This device can’t draw the 3D map, so here is the flat survey.'}
+        {lost && (
+          <button onClick={retry} className="rounded-full bg-ink px-3 py-1 text-[12px] font-semibold text-paper hover-device:hover:bg-ink/85">
+            Redraw
+          </button>
+        )}
+      </p>
+    </div>
     </div>
   )
 }

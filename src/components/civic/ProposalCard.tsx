@@ -12,6 +12,7 @@ import { WorldMark } from '@/components/ui/WorldMark'
 import { wallet } from '@/lib/wallet'
 import { notify } from '@/lib/inbox'
 import { connectOpen } from '@/components/wallet/Connect'
+import { toast } from '@/lib/toast'
 
 /** A holder vote: what it changes, the tally, and when it can execute. */
 export function ProposalCard({ p, world }: { p: Proposal; world?: World }) {
@@ -24,6 +25,7 @@ export function ProposalCard({ p, world }: { p: Proposal; world?: World }) {
     if (!me.connected) return connectOpen.set(true)
     votes.set((x) => ({ ...x, [p.id]: v }))
     notify({ kind: 'vote', title: `You voted ${v}`, body: p.title, worldId: p.worldId, href: `/p/${p.id}` })
+    toast({ text: `Voted ${v}`, href: `/p/${p.id}`, action: 'See tally' })
   }
 
   return (

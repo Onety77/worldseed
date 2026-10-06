@@ -14,6 +14,7 @@ import { notify } from '@/lib/inbox'
 import { connectOpen } from '@/components/wallet/Connect'
 import { VerdictTag } from '@/components/ui/bits'
 import { WorldMark } from '@/components/ui/WorldMark'
+import { toast } from '@/lib/toast'
 
 /*
   One evidence bundle: what a governor did, which model did it, what it cost and where the
@@ -139,6 +140,7 @@ function Challenge({ e }: { e: Evidence }) {
       onSubmit={(ev) => {
         ev.preventDefault()
         const c = fileChallenge({ worldId: e.worldId, evidenceId: e.id, bondUsd: bond, claim: reason })
+        toast({ text: `Challenge filed with a $${bond} bond` })
         notify({ kind: 'challenge', title: 'Challenge filed', body: `Bond of $${bond} posted against “${e.title}”. A verifier panel is reviewing it now.`, worldId: e.worldId, href: `/c/${c.id}` })
       }}
     >

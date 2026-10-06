@@ -9,6 +9,7 @@ import { Panel, PanelHead } from '@/components/shell/Panel'
 import { Segmented } from '@/components/ui/bits'
 import { ProposalCard } from '@/components/civic/ProposalCard'
 import { ChallengeCard } from '@/components/civic/ChallengeCard'
+import { Empty } from '@/components/ui/bits'
 
 export function GovernanceLens() {
   useTitle('Governance')
@@ -50,6 +51,11 @@ export function GovernanceLens() {
         {tab === 'votes'
           ? [...proposals].sort((a, b) => a.endsAt - b.endsAt).map((p) => <ProposalCard key={p.id} p={p} world={find(p.worldId)} />)
           : challenges.map((c) => <ChallengeCard key={c.id} c={c} world={find(c.worldId)} />)}
+        {!(tab === 'votes' ? proposals : challenges).length && (
+          <li>
+            <Empty title={tab === 'votes' ? 'No votes open' : 'Nothing challenged'}>{tab === 'votes' ? 'Every governor is working inside its charter.' : 'Open any proof in a governor log to challenge it.'}</Empty>
+          </li>
+        )}
       </ul>
     </Panel>
   )

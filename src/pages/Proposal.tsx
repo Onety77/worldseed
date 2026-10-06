@@ -22,6 +22,8 @@ import { WorldMark } from '@/components/ui/WorldMark'
 import { Section } from '@/components/world/parts'
 import { connectOpen } from '@/components/wallet/Connect'
 import { NotFound } from './NotFound'
+import { Avatar, Who } from '@/components/ui/Who'
+import { toast } from '@/lib/toast'
 
 export function ProposalPage() {
   const { id } = useParams()
@@ -125,6 +127,7 @@ function Vote({ p, w, quorum }: { p: Proposal; w: World; quorum: number }) {
     if (!me.connected) return connectOpen.set(true)
     votes.set((x) => ({ ...x, [p.id]: v }))
     notify({ kind: 'vote', title: `You voted ${v}`, body: p.title, worldId: w.id, href: `/p/${p.id}` })
+    toast({ text: `Voted ${v}. Your weight is in the tally.` })
   }
   return (
     <Section title="The vote" note={`Passes with a majority and at least ${pct(quorum)} of supply voting. Then a ${p.timelockH}-hour timelock before it executes.`}>
@@ -198,7 +201,7 @@ function Voters({ p, w, voters }: { p: Proposal; w: World; voters: ReturnType<ty
             .map((v) => (
               <m.li key={v.who} layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={cn('grid grid-cols-[1fr_auto_72px] items-center gap-3 px-3.5 py-2.5', v.who === 'You' && 'bg-sprout-soft')}>
                 <span className="min-w-0 truncate text-[13px]">
-                  <span className={cn(v.who === 'You' ? 'font-semibold' : 'font-mono text-[12px]')}>{v.who}</span>
+                  <Who handle={v.who} className={cn(v.who === 'You' ? 'font-semibold' : 'font-mono text-[12px]')} />
                   <span className="ml-2 text-[11.5px] text-ink-3">{v.who === 'You' ? 'just now' : `${ago(v.at, now)} ago`}</span>
                 </span>
                 <span className={cn('font-mono text-[11px] font-medium uppercase', v.side === 'for' ? 'text-ink' : 'text-red')}>{v.side}</span>
@@ -227,18 +230,23 @@ function Discussion({ p, w, comments }: { p: Proposal; w: World; comments: Comme
     if (!me.connected) return connectOpen.set(true)
     posted.set((x) => ({ ...x, [p.id]: [...(x[p.id] ?? []), { id: `mine-${Date.now()}`, text: t, at: Date.now() }] }))
     setText('')
+    toast({ text: 'Comment posted' })
   }
   return (
     <Section title="Discussion" note={`${all.length} comments from holders, agents and the governor.`}>
       <ol className="grid gap-3">
         {all.map((c) => (
           <m.li key={c.id} initial={c.role === 'You' ? { opacity: 0, y: 6 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: EASE_OUT }} className="flex gap-3">
-            <span aria-hidden className={cn('mt-0.5 grid size-8 shrink-0 place-items-center rounded-full font-mono text-[11px] font-medium uppercase', c.role === 'Governor' ? 'ink-card' : c.role === 'You' ? 'bg-sprout text-on-sprout' : c.role === 'Agent' ? 'bg-water text-ink' : 'bg-ink/[0.06]')}>
-              {c.role === 'Governor' ? 'AI' : c.who.replace('agent:', '').slice(0, 2)}
-            </span>
+            {c.role === 'Governor' || c.role === 'You' ? (
+              <span aria-hidden className={cn('mt-0.5 grid size-8 shrink-0 place-items-center rounded-full font-mono text-[11px] font-medium uppercase', c.role === 'Governor' ? 'ink-card' : 'bg-sprout text-on-sprout')}>
+                {c.role === 'Governor' ? 'AI' : 'Yo'}
+              </span>
+            ) : (
+              <Avatar handle={c.who} className="mt-0.5" />
+            )}
             <div className="min-w-0 flex-1">
               <p className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
-                <span className="font-semibold">{c.who}</span>
+                <Who handle={c.who} className="font-semibold" />
                 <span className="rounded-[5px] bg-ink/[0.05] px-1.5 py-0.5 text-[10.5px] font-medium text-ink-2">{c.role === 'Governor' ? `${w.name} governor` : c.role}</span>
                 <span className="text-[11.5px] text-ink-3">{ago(c.at, now)} ago</span>
               </p>

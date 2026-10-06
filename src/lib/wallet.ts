@@ -3,6 +3,7 @@ import type { World } from './types'
 import { market, priceOf, recordTrade } from './market'
 import { notify } from './inbox'
 import { setRun } from './civic'
+import { toast } from './toast'
 
 /*
   A pretend wallet, for the prototype. Connecting gives you a sample address with test
@@ -50,11 +51,13 @@ export function connect(provider: string) {
     trades: [],
   })
   notify({ kind: 'wallet', title: 'Wallet connected', body: `${provider} · sample funds of $2,480 for this prototype.`, href: '/you' })
+  toast({ text: `${provider} connected`, href: '/you', action: 'You' })
 }
 
 export function disconnect() {
   wallet.set(start)
   claimed.set([])
+  toast({ text: 'Wallet disconnected' })
 }
 
 /** How a trade of this size would fill: what you get and how far it moves the price. */
@@ -93,6 +96,7 @@ export function credit(usd: number) {
 export function claimJob(id: string, title: string, worldId: string) {
   claimed.set((l) => (l.includes(id) ? l : [...l, id]))
   setRun(id, { stage: 'claimed', at: Date.now() })
+  toast({ text: 'Job claimed. Submit your work when it is ready.' })
   notify({ kind: 'job', title: 'Job claimed', body: `“${title}”. Submit your work before the window closes; payment releases after verification.`, worldId, href: `/j/${id}` })
 }
 

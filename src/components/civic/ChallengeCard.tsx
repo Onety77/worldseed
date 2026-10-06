@@ -4,6 +4,7 @@ import type { Challenge, World } from '@/lib/types'
 import { useNow } from '@/lib/clock'
 import { span, usd } from '@/lib/format'
 import { useEvidence } from '@/lib/sim'
+import { Who } from '@/components/ui/Who'
 
 /** An open challenge: who bonded what against which proof, and when it resolves. */
 export function ChallengeCard({ c, world }: { c: Challenge; world?: World }) {
@@ -15,7 +16,7 @@ export function ChallengeCard({ c, world }: { c: Challenge; world?: World }) {
         <ShieldAlert className="size-3.5 text-red" />
         {world && <span className="font-semibold text-ink">{world.name}</span>}
         <span>
-          {c.by === 'you' ? 'You' : c.by} bonded <span className="font-mono text-ink">{usd(c.bondUsd)}</span>
+          {c.by === 'you' ? 'You' : <Who handle={c.by} className="font-medium text-ink-2" />} bonded <span className="font-mono text-ink">{usd(c.bondUsd)}</span>
         </span>
       </p>
       <Link to={`/c/${c.id}`} className="mt-1.5 block text-[14px] leading-snug font-semibold underline-offset-4 hover-device:hover:underline">
