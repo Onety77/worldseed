@@ -5,8 +5,8 @@ import { seeded } from '@/lib/seeded'
 
 /*
   A world's emblem: its hill seen from above, as contour rings. One ring per era it has
-  reached, wobbling the way its coastline does; a sovereign world sits inside a dashed ring
-  of water; the seed at the centre is sprout while the world is still growing.
+  reached, wobbling the way its coastline does; a sovereign world sits inside a dashed ring,
+  its orbit; the seed at the centre is sprout while the world is still growing.
 */
 
 function ring(r: () => number, radius: number) {

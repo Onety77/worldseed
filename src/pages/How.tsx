@@ -125,7 +125,7 @@ export function HowPage() {
             <li>· {SOVEREIGNTY.uptime90d}% uptime over 90 days</li>
             <li>· {SOVEREIGNTY.runwayMonths} months of chain costs in the infrastructure reserve</li>
           </ul>
-          <p className="mt-3 max-w-[62ch] text-[14.5px] text-ink-2">Then holders vote, a timelock runs, and the GraduationController launches an Orbit L3. A paymaster lets the world's token pay for gas from day one.</p>
+          <p className="mt-3 max-w-[62ch] text-[14.5px] text-ink-2">Then holders vote, a timelock runs, and the GraduationController launches an Orbit L3. A paymaster lets the world's token pay for gas from day one. On the map, that is the moment the world lifts off the mainland and becomes a planet in orbit around it, leaving a launch site where it stood.</p>
         </Part>
 
         <Part n="7" title="When things go wrong">

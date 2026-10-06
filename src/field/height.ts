@@ -4,8 +4,8 @@
 
   - The continent: a low plateau with a ragged coast, the shared WORLDSEED environment.
   - Each world: a hill whose height follows its growth, cut into one terrace per era.
-  - A sovereign world: a moat of open water around its hill. It has its own chain now;
-    a dashed bridge still links it to the mainland it settles to.
+  - Water round a hill: a launch site's island, left where a world lifted off to become a
+    planet (and, in a replay, the world itself on the day it earned its chain).
 */
 
 export const MAX_HILLS = 40
@@ -95,7 +95,7 @@ export function continent(x: number, z: number) {
   const land = 1 - smooth(0.78, 1.04, r + (n - 0.45) * 0.42)
   return land * (0.7 + n * 1.7 + d * 0.5) - (1 - land) * 2.2
 }
-function hillAt(x: number, z: number, h: Hill) {
+export function hillAt(x: number, z: number, h: Hill) {
   const dx = x - h.x, dz = z - h.z
   const ang = Math.atan2(dz, dx)
   const rr = h.radius * (1 + 0.1 * Math.sin(ang * 3 + h.x) + 0.06 * Math.sin(ang * 5 + h.z * 0.7))

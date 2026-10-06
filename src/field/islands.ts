@@ -21,7 +21,7 @@ export interface IslandParts {
   extras: THREE.Group
 }
 
-export function buildIsland(id: string, template: Template, hill: Hill, hills: Hill[], shared: Shared): IslandParts {
+export function buildIsland(id: string, template: Template, hill: Hill, hills: Hill[], shared: Shared, opts: { lighthouse?: boolean } = {}): IslandParts {
   const g = (x: number, z: number) => heightAt(x, z, hills)
   // the way home: from the island towards the middle of the continent
   const len = Math.hypot(hill.x, hill.z) || 1
@@ -30,7 +30,15 @@ export function buildIsland(id: string, template: Template, hill: Hill, hills: H
 
   // ── the bridge ──
   const b = new Builder(rand(seedOf(id + ':bridge')), template)
-  const from = 0.82, to = 1.72
+  // out from the island until it reaches land again
+  const from = 0.82
+  let to = 1.72
+  for (let t = 1.3; t < 3.2; t += 0.04) {
+    if (g(hill.x + dir.x * hill.radius * t, hill.z + dir.z * hill.radius * t) > 0.45) {
+      to = Math.max(1.5, t + 0.12)
+      break
+    }
+  }
   const n = 26
   const pts = Array.from({ length: n + 1 }, (_, i) => {
     const t = from + ((to - from) * i) / n
@@ -75,32 +83,34 @@ export function buildIsland(id: string, template: Template, hill: Hill, hills: H
   // ── the lighthouse and the pier ──
   const e = new Builder(rand(seedOf(id + ':island')), template)
   e.lit = 1
-  // the lighthouse stands on the last of the land, facing the open sea
-  const out = { x: -dir.x, z: -dir.z }
-  let lx = hill.x, lz = hill.z
-  for (let t = 0.7; t < 1.3; t += 0.02) {
-    const x = hill.x + (out.x * 0.8 + side.x * 0.6) * hill.radius * t, z = hill.z + (out.z * 0.8 + side.z * 0.6) * hill.radius * t
-    if (g(x, z) > 0.35) {
-      lx = x
-      lz = z
+  if (opts.lighthouse !== false) {
+    // the lighthouse stands on the last of the land, facing the open sea
+    const out = { x: -dir.x, z: -dir.z }
+    let lx = hill.x, lz = hill.z
+    for (let t = 0.7; t < 1.3; t += 0.02) {
+      const x = hill.x + (out.x * 0.8 + side.x * 0.6) * hill.radius * t, z = hill.z + (out.z * 0.8 + side.z * 0.6) * hill.radius * t
+      if (g(x, z) > 0.35) {
+        lx = x
+        lz = z
+      }
     }
+    const ly = g(lx, lz) - 0.05
+    e.at(ly)
+    const f = { x: lx, z: lz, rot: 0 }
+    let top = cylinder(e, f, ly, 0.42, 0.2, 10, 'trim')
+    for (let i = 0; i < 4; i++) top = cylinder(e, f, top, 0.34 - i * 0.03, 0.45, 10, i % 2 ? 'roof' : 'wall')
+    top = cylinder(e, f, top, 0.36, 0.06, 10, 'trim')
+    // the lamp room: glass that glows after dark
+    const k = 0.2
+    for (let i = 0; i < 8; i++) {
+      const a0 = (i / 8) * Math.PI * 2, a1 = ((i + 1) / 8) * Math.PI * 2
+      const p0 = [lx + Math.cos(a0) * k, top, lz + Math.sin(a0) * k], p1 = [lx + Math.cos(a1) * k, top, lz + Math.sin(a1) * k]
+      const p2 = [p1[0], top + 0.32, p1[2]], p3 = [p0[0], top + 0.32, p0[2]]
+      e.tri(p0, p1, p2, 'lamp', 1)
+      e.tri(p0, p2, p3, 'lamp', 1)
+    }
+    dome(e, { x: lx, z: lz, rot: 0 }, top + 0.32, 0.26, 'roof')
   }
-  const ly = g(lx, lz) - 0.05
-  e.at(ly)
-  const f = { x: lx, z: lz, rot: 0 }
-  let top = cylinder(e, f, ly, 0.42, 0.2, 10, 'trim')
-  for (let i = 0; i < 4; i++) top = cylinder(e, f, top, 0.34 - i * 0.03, 0.45, 10, i % 2 ? 'roof' : 'wall')
-  top = cylinder(e, f, top, 0.36, 0.06, 10, 'trim')
-  // the lamp room: glass that glows after dark
-  const k = 0.2
-  for (let i = 0; i < 8; i++) {
-    const a0 = (i / 8) * Math.PI * 2, a1 = ((i + 1) / 8) * Math.PI * 2
-    const p0 = [lx + Math.cos(a0) * k, top, lz + Math.sin(a0) * k], p1 = [lx + Math.cos(a1) * k, top, lz + Math.sin(a1) * k]
-    const p2 = [p1[0], top + 0.32, p1[2]], p3 = [p0[0], top + 0.32, p0[2]]
-    e.tri(p0, p1, p2, 'lamp', 1)
-    e.tri(p0, p2, p3, 'lamp', 1)
-  }
-  dome(e, { x: lx, z: lz, rot: 0 }, top + 0.32, 0.26, 'roof')
 
   // a pier into the moat, a quarter turn round from the bridge
   const pa = Math.atan2(side.z, side.x)

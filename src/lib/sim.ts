@@ -64,7 +64,7 @@ function harrow(now: number, s: State): State {
     ]
     grad = [...grad, { worldId: 'harrow', at: now }]
   }
-  // the Field marks the moment itself, as the water opens
+  // the Field marks the moment itself: the world lifts off and becomes a planet
   return { ...s, worlds: s.worlds.map((x) => (x.id === 'harrow' ? next : x)), evidence: ev, graduated: grad }
 }
 

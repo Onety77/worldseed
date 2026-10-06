@@ -48,7 +48,7 @@ export class Atmos {
   private m = new THREE.Matrix4()
   // sparks: proofs rise green from a summit; a chain earned sets off fireworks
   private sparks: THREE.InstancedMesh
-  private sparkList: { x: number; y: number; z: number; vx: number; vy: number; vz: number; t: number; life: number; c: THREE.Color }[] = []
+  private sparkList: { x: number; y: number; z: number; vx: number; vy: number; vz: number; t: number; life: number; c: THREE.Color; dust?: boolean }[] = []
 
   constructor(budget: 'high' | 'low') {
     const r = rand(2207)
@@ -92,7 +92,16 @@ export class Atmos {
   }
 
   /** a burst of sparks at a point: 'proof' rises green, 'bad' falls red, 'big' is a firework */
-  burst(x: number, y: number, z: number, kind: 'proof' | 'bad' | 'big') {
+  burst(x: number, y: number, z: number, kind: 'proof' | 'bad' | 'big' | 'dust') {
+    if (kind === 'dust') {
+      // dust and grit: thrown out, then drifting down; earth-coloured, not glowing
+      for (let i = 0; i < 14; i++) {
+        if (this.sparkList.length >= this.sparks.count) this.sparkList.shift()
+        const a = Math.random() * Math.PI * 2, sp = 0.5 + Math.random() * 1.1
+        this.sparkList.push({ x: x + (Math.random() - 0.5) * 0.8, y, z: z + (Math.random() - 0.5) * 0.8, vx: Math.cos(a) * sp, vy: 0.6 + Math.random() * 1.4, vz: Math.sin(a) * sp, t: 0, life: 1.4 + Math.random() * 1, c: new THREE.Color(['#b8a68a', '#9a8a70', '#7d6f5c'][i % 3]), dust: true })
+      }
+      return
+    }
     const colors = kind === 'big' ? ['#c4ef3a', '#ffd76a', '#ffffff', '#7fd3ff'] : kind === 'bad' ? ['#ff7a5a', '#d2553a'] : ['#c4ef3a', '#e6ff9a']
     const n = kind === 'big' ? 46 : 16
     const h = kind === 'big' ? y + 7 + Math.random() * 3 : y + 0.6
@@ -193,7 +202,8 @@ export class Atmos {
       p.set(sp.x, sp.y, sp.z)
       this.m.compose(p, q.identity(), s.setScalar((1 - sp.t) * (1.1 - sp.t * 0.4)))
       this.sparks.setMatrixAt(i, this.m)
-      col.copy(sp.c).multiplyScalar(1.6)
+      // sparks glow; dust only shows what light there is
+      col.copy(sp.c).multiplyScalar(sp.dust ? 1 - night * 0.7 : 1.6)
       this.sparks.setColorAt(i, col)
     }
     this.sparks.instanceMatrix.needsUpdate = true

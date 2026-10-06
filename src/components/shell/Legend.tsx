@@ -9,7 +9,7 @@ export function Legend() {
         <Row icon={<path d="M7 17V4m0 .3 7 2.5-7 2.5M3.5 17h7" />}>A seed, in its 7-day Genesis era</Row>
         <Row icon={<path d="M2 17h16M4 17v-4h12v4M6.5 13V9.5h7V13M8.5 9.5V6h3v3.5" />}>Terraces: one per era passed; height follows readiness</Row>
         <Row icon={<path d="M5 15.5h3v-3H5zM10.5 15.5h4.5v-5h-4.5z" />}>Buildings: apps it has deployed</Row>
-        <Row icon={<><circle cx="10" cy="10" r="7.5" strokeDasharray="2 2" /><circle cx="10" cy="10" r="3.5" /></>}>Ringed by water: its own chain</Row>
+        <Row icon={<path d="M3.5 16.5h13M6 16.5c0-2.2 1.8-3 4-3s4 .8 4 3M10 13.5V2.5" strokeDasharray="0" />}>Launch site: it left to become a planet</Row>
         <Row icon={<circle cx="10" cy="10" r="6" className="stroke-green" strokeWidth="2.2" />}>A governor just published proof</Row>
       </dl>
     </div>

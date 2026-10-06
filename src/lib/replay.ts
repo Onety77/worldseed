@@ -5,7 +5,7 @@ import { hillFor } from '@/field/fromWorld'
 /*
   A world's life as a time-lapse: where its hill stood on any day since it was seeded, and
   the moments worth stopping on. Seeds start as a stake in flat ground; eras passed add
-  terraces; apps add buildings; a chain rings the hill with water.
+  terraces; apps add buildings; earning a chain lifts it off the land (the Field plays that).
 */
 
 const DAY = 86_400_000
@@ -28,7 +28,7 @@ export function lifeOf(w: World, now: number) {
   if (w.stage !== 'seed' && age > genesis) milestones.push({ day: genesis, title: 'Genesis passed, first terrace', kind: 'era' })
   if (w.stage !== 'seed' && final.tiers >= 3 && age > growth) milestones.push({ day: growth, title: 'Growth passed, second terrace', kind: 'era' })
   apps.forEach((a, i) => milestones.push({ day: a.day, title: i === 0 ? `First app: ${a.name.replace(`${w.name} `, '')}` : `Deployed ${a.name.replace(`${w.name} `, '')}`, kind: 'app' }))
-  if (chainDay !== null && chainDay <= age) milestones.push({ day: chainDay, title: `Own chain live: ${w.chain!.chainId}`, kind: 'chain' })
+  if (chainDay !== null && chainDay <= age) milestones.push({ day: chainDay, title: `Own chain live: ${w.chain!.chainId}. Lifts off as a planet`, kind: 'chain' })
   milestones.push({ day: age, title: 'Today', kind: 'now' })
   milestones.sort((a, b) => a.day - b.day)
 

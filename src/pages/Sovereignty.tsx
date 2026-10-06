@@ -113,7 +113,7 @@ function Harrow() {
         </div>
         {done ? (
           <p className="px-4 pt-3 pb-4 text-[13.5px] text-paper/85">
-            Chain {w.chain?.chainId} is live. Its forecasters now pay gas in HRW, and the Field has opened water around its hill.
+            Chain {w.chain?.chainId} is live. Its forecasters now pay gas in HRW, and Harrow has lifted off the mainland to orbit it as a planet of its own.
           </p>
         ) : (
           <>

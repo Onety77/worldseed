@@ -12,7 +12,7 @@ const PLAY_MS = 16_000
 
 /**
  * A world's life as a time-lapse on the Field: the stake going in, terraces stepping up as
- * eras pass, buildings rising with each app, and, for the sovereign, the water coming in.
+ * eras pass, buildings rising with each app, and, for the sovereign, the day it lifts off the land.
  */
 export function Replay({ w, onClose }: { w: World; onClose: () => void }) {
   const engine = useField()

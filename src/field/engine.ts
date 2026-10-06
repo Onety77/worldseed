@@ -11,6 +11,7 @@ import { setLook, type Shared } from './kit'
 import { Life } from './life'
 import { District, type Anchor, type DistrictInput } from './district'
 import { ARC, CAPTURE_HALF, Cosmos, GLOBE_R, type PlanetInput } from './cosmos'
+import { buildChunk, buildSite, disposeChunk, disposeSite, lookSite, siteOf, type Chunk, type Site } from './launch'
 
 /*
   The Field: one WebGL scene that lives behind every page. A topographic landscape in ink
@@ -68,6 +69,25 @@ interface SCam {
   az: number
 }
 
+/** a world lifting off the land to become a planet */
+interface Lift {
+  t0: number
+  /** rumble: the ground shakes · rise: the world climbs away · (then it is gone) */
+  phase: 'rumble' | 'rise'
+  /** the hill as it stood */
+  from: Hill
+  /** a replay's lift stays on the land; a live one goes on into space */
+  replay: boolean
+  chunk: Chunk | null
+  photo: THREE.WebGLRenderTarget | null
+  /** what rides up with it: its town, its lighthouse */
+  carried: THREE.Group[]
+  fx: number
+}
+/** seconds the ground shakes before the world tears free, and the climb after */
+const RUMBLE = 1.8
+const CLIMB = 4.6
+
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 const smooth = (a: number, b: number, v: number) => {
@@ -110,8 +130,17 @@ export class FieldEngine {
   /** what each hill currently looks like, easing toward its target */
   private shown = new Map<string, Hill & { green: number; muted: number; trouble: number }>()
   /** worlds earning their chain right now: id → when it began */
-  private ceremonies = new Map<string, number>()
-  private lastMoat = new Map<string, number>()
+  /** worlds lifting off right now */
+  private lifts = new Map<string, Lift>()
+  /** whether each world was a planet when last seen, to catch the moment one becomes one */
+  private hadPlanet = new Map<string, boolean>()
+  /** what a launch site has besides its buildings: the beam and the scorched ground */
+  private sites = new Map<string, Site>()
+  /** where on the land the trip to space starts from, or ends */
+  private tripFocus = { x: 0, z: 0 }
+  private focusSet = false
+  /** a camera following a lifting world: how high to look, and how hard the ground shakes */
+  private follow = { y: 0, shake: 0 }
   private focus: string | null = null
   private hover: string | null = null
   private pings: { x: number; z: number; at: number; scale: number }[] = []
@@ -241,29 +270,176 @@ export class FieldEngine {
   setWorlds(list: FieldWorld[]) {
     this.worlds = list.slice(0, MAX_HILLS)
     for (const w of this.worlds) {
-      if (!this.shown.has(w.id)) this.shown.set(w.id, { ...w.hill, height: 0, moat: w.hill.moat > 0.5 && !this.reduced ? 0 : w.hill.moat, green: 0, muted: 0, trouble: w.trouble })
-      // a world that just earned its chain: begin its ceremony
-      const was = this.lastMoat.get(w.id)
-      if (was !== undefined && was < 0.5 && w.hill.moat >= 0.5) {
-        this.ceremonies.set(w.id, performance.now())
-        this.ping(w.id, 'big')
+      // a world seen earning its chain lifts off the land (one that already had it at load is a site)
+      const s = this.shown.get(w.id)
+      if (this.hadPlanet.get(w.id) === false && w.planet && s && !this.reduced) this.startLift(w.id, { x: w.hill.x, z: w.hill.z, radius: s.radius, height: s.height, tiers: s.tiers, moat: s.moat }, false)
+      this.hadPlanet.set(w.id, Boolean(w.planet))
+      if (!s) {
+        const t = this.targetHill(w)
+        this.shown.set(w.id, { ...t, height: 0, green: 0, muted: 0, trouble: w.trouble })
       }
-      this.lastMoat.set(w.id, w.hill.moat)
     }
     this.syncSettlements()
+    this.layLand()
+    const real = this.worlds.filter((w) => w.id !== 'draft')
+    if (this.worlds.length !== this.lastCount) this.capDirty = true
+    this.lastCount = this.worlds.length
+    this.cosmos.setPlanets(real.filter((w) => w.planet).map((w) => ({ id: w.id, ...w.planet! })))
+    // a world still lifting off hasn't reached space yet
+    for (const [id, l] of this.lifts) if (!l.replay) this.cosmos.hold(id)
+    // out in space, the framing follows the planets (a new one widens it)
+    if (this.sp.goal === 1) this.setView(this.view)
+    this.wake()
+  }
+
+  /** roads, woods and the painted ground, for the land as it now stands */
+  private layLand() {
     const real = this.worlds.filter((w) => w.id !== 'draft')
     // a plot being planted is cleared of trees
     const draft = this.worlds.find((w) => w.id === 'draft')
     CLEARING.uClear.value.set(draft?.hill.x ?? 0, draft?.hill.z ?? 0, (draft?.hill.radius ?? 0) + 1.6, draft ? 1 : 0)
-    const lw = real.map((w) => ({ id: w.id, hill: w.hill, stage: (w.town.seed ? 'seed' : w.hill.moat > 0.5 ? 'sovereign' : 'realm') as 'seed' | 'realm' | 'sovereign' }))
+    const lw = real.map((w) => {
+      const h = this.targetHill(w)
+      return { id: w.id, hill: h, stage: (w.town.seed ? 'seed' : h.moat > 0.5 ? 'sovereign' : 'realm') as 'seed' | 'realm' | 'sovereign' }
+    })
     this.life.build(lw)
-    this.paint.update(lw, this.life.roads(), real.map((w) => w.hill))
-    if (this.worlds.length !== this.lastCount) this.capDirty = true
-    this.lastCount = this.worlds.length
-    this.cosmos.setPlanets(real.filter((w) => w.planet).map((w) => ({ id: w.id, ...w.planet! })))
-    // out in space, the framing follows the planets (a new one widens it)
-    if (this.sp.goal === 1) this.setView(this.view)
+    this.paint.update(lw, this.life.roads(), lw.map((x) => x.hill))
+  }
+
+  /** a world with its own chain has left the land: a launch site stands where it was */
+  private siteMode(w: FieldWorld) {
+    if (!w.planet || this.lifts.get(w.id)?.phase === 'rumble') return false
+    const rp = this.replay?.id === w.id ? this.replay : null
+    return rp ? rp.moat >= 0.5 : true
+  }
+
+  /** the shape the land should have for a world right now */
+  private targetHill(w: FieldWorld): Hill {
+    const l = this.lifts.get(w.id)
+    if (l?.phase === 'rumble') return l.from
+    if (this.siteMode(w)) return siteOf(w.hill)
+    const rp = this.replay?.id === w.id ? this.replay : null
+    return rp ? { x: w.hill.x, z: w.hill.z, radius: rp.radius, height: rp.height, tiers: rp.tiers, moat: rp.moat } : w.hill
+  }
+
+  private startLift(id: string, from: Hill, replay: boolean) {
+    this.endLift(id)
+    this.lifts.set(id, { t0: performance.now(), phase: 'rumble', from, replay, chunk: null, photo: null, carried: [], fx: 0 })
     this.wake()
+  }
+
+  private endLift(id: string) {
+    const l = this.lifts.get(id)
+    if (!l) return
+    if (l.chunk) {
+      this.towns.remove(l.chunk.pivot)
+      disposeChunk(l.chunk)
+    }
+    l.carried.forEach((g) => disposeGroup(g))
+    l.photo?.dispose()
+    this.lifts.delete(id)
+  }
+
+  /** the moment it tears free: the hill becomes a solid piece that can climb, and the site appears beneath */
+  private tearFree(id: string, l: Lift, w: FieldWorld) {
+    const half = l.from.radius * 1.35
+    l.photo = this.photograph(l.from.x, l.from.z, half, this.quality === 'high' ? 1024 : 512)
+    const ch = buildChunk(l.from, this.hills(), l.photo.texture, half)
+    // its town and lighthouse ride up with it
+    const st = this.settlements.get(id)
+    if (st) {
+      this.towns.remove(st.group)
+      ch.inner.add(st.group)
+      l.carried.push(st.group)
+      this.settlements.delete(id)
+      this.dropSite(id)
+    }
+    const isl = this.islands.get(id)
+    if (isl) {
+      this.towns.remove(isl.parts.bridge, isl.parts.extras)
+      ch.inner.add(isl.parts.extras)
+      l.carried.push(isl.parts.extras)
+      disposeGroup(isl.parts.bridge)
+      this.islands.delete(id)
+    }
+    this.towns.add(ch.pivot)
+    l.chunk = ch
+    l.phase = 'rise'
+    // the land beneath is the launch site at once, hidden under the world until it climbs
+    const s = this.shown.get(id)!
+    Object.assign(s, siteOf(w.hill))
+    this.hfDirty = true
+    this.syncSettlements()
+    const ns = this.settlements.get(id)
+    if (ns) ns.rise = -1.3
+    this.layLand()
+    this.ping(id, 'proof')
+    if (!this.reduced)
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2
+        const x = l.from.x + Math.cos(a) * l.from.radius, z = l.from.z + Math.sin(a) * l.from.radius
+        this.atmos.burst(x, heightAt(x, z, this.hills()) + 0.2, z, 'dust')
+      }
+  }
+
+  /** the land round a point photographed from straight above, without buildings */
+  private photograph(cx: number, cz: number, half: number, size: number) {
+    const rt = new THREE.WebGLRenderTarget(size, size, { samples: this.quality === 'high' ? 4 : 0, colorSpace: THREE.SRGBColorSpace, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter })
+    const cam = new THREE.OrthographicCamera(-half, half, half, -half, 1, 700)
+    cam.position.set(cx, 320, cz)
+    cam.up.set(0, 0, -1)
+    cam.lookAt(cx, 0, cz)
+    cam.updateMatrixWorld()
+    this.towns.visible = false
+    // no highlight or rings in the picture: only the land itself (the next frame puts them back)
+    for (const m of this.gu.uMeta.value) m.z = 0
+    for (const pg of this.gu.uPing.value) pg.set(0, 0, 0, 0)
+    this.shoot([[this.night.k, rt]], cam, cx, cz)
+    this.towns.visible = true
+    return rt
+  }
+
+  /** render the land from above into targets (at given night levels), with no haze in the way */
+  private shoot(passes: (readonly [number, THREE.WebGLRenderTarget])[], cam: THREE.Camera, cx: number, cz: number) {
+    if (this.hfDirty) {
+      this.hf.update(this.renderer, this.hills())
+      this.hfDirty = false
+    }
+    const fog = this.scene.fog as THREE.Fog
+    const keep = { near: fog.near, far: fog.far, uFog: this.shared.uFog.value.clone(), night: this.night.k }
+    fog.near = 1e5
+    fog.far = 2e5
+    this.shared.uFog.value.set(1e5, 2e5)
+    this.atmos.group.visible = false
+    this.sky.dome.visible = false
+    this.sky.follow(cx, cz, 400, (cam as THREE.OrthographicCamera).position)
+    for (const [k, rt] of passes) {
+      if (this.night.k !== k) {
+        this.night.k = k
+        this.applyNight()
+      }
+      this.renderer.setRenderTarget(rt)
+      this.renderer.clear()
+      this.renderer.render(this.scene, cam)
+    }
+    this.renderer.setRenderTarget(null)
+    if (this.night.k !== keep.night) {
+      this.night.k = keep.night
+      this.applyNight()
+    }
+    fog.near = keep.near
+    fog.far = keep.far
+    this.shared.uFog.value.copy(keep.uFog)
+    this.atmos.group.visible = true
+    this.sky.dome.visible = true
+  }
+
+  private dropSite(id: string) {
+    const s = this.sites.get(id)
+    if (!s) return
+    this.towns.remove(s.beam, s.scorch)
+    disposeSite(s)
+    this.sites.delete(id)
   }
 
   setInset(i: { left: number; right: number; top: number; bottom: number }) {
@@ -331,6 +507,7 @@ export class FieldEngine {
       // where it will end, facing the way space was facing
       this.goal.az = this.scam.az
       this.cam = { ...this.goal }
+      this.tripFocus = { x: this.goal.tx, z: this.goal.tz }
       this.flight = null
       this.vel = { tx: 0, tz: 0, az: 0 }
       if (this.reduced) this.sp.x = 0
@@ -358,7 +535,7 @@ export class FieldEngine {
   }
 
   private isPlanet(id: string) {
-    return Boolean(this.worlds.find((w) => w.id === id)?.planet) && this.replay?.id !== id && this.cosmos.planet(id) !== null
+    return Boolean(this.worlds.find((w) => w.id === id)?.planet) && this.replay?.id !== id && !this.lifts.has(id) && this.cosmos.planet(id) !== null
   }
 
   /** look at the home planet (null) or follow one of the planets round its orbit */
@@ -369,7 +546,9 @@ export class FieldEngine {
     const fr = this.spaceFrame(id)
     this.sbase = fr.dist
     if (enter) {
-      // leaving the land: space starts facing the way the land was
+      // leaving the land: space starts facing the way the land was, above where it was looking
+      if (!this.focusSet) this.tripFocus = { x: this.cam.tx, z: this.cam.tz }
+      this.focusSet = false
       this.sgoal = { ...fr, az: this.cam.az }
       this.scam = { ...this.sgoal }
       this.sflight = null
@@ -438,33 +617,7 @@ export class FieldEngine {
       cam.updateMatrixWorld()
       this.cap = { day: make(), night: make(), cam }
     }
-    if (this.hfDirty) {
-      this.hf.update(this.renderer, this.hills())
-      this.hfDirty = false
-    }
-    const fog = this.scene.fog as THREE.Fog
-    const keep = { near: fog.near, far: fog.far, uFog: this.shared.uFog.value.clone(), night: this.night.k }
-    fog.near = 1e5
-    fog.far = 2e5
-    this.shared.uFog.value.set(1e5, 2e5)
-    this.atmos.group.visible = false
-    this.sky.dome.visible = false
-    this.sky.follow(0, 0, 400, this.cap.cam.position)
-    for (const [k, rt] of [[0, this.cap.day], [1, this.cap.night]] as const) {
-      this.night.k = k
-      this.applyNight()
-      this.renderer.setRenderTarget(rt)
-      this.renderer.clear()
-      this.renderer.render(this.scene, this.cap.cam)
-    }
-    this.renderer.setRenderTarget(null)
-    this.night.k = keep.night
-    this.applyNight()
-    fog.near = keep.near
-    fog.far = keep.far
-    this.shared.uFog.value.copy(keep.uFog)
-    this.atmos.group.visible = true
-    this.sky.dome.visible = true
+    this.shoot([[0, this.cap.day], [1, this.cap.night]], this.cap.cam, 0, 0)
     this.cosmos.setCapture(this.cap.day.texture, this.cap.night.texture)
     this.capDirty = false
     this.capAt = performance.now()
@@ -554,10 +707,26 @@ export class FieldEngine {
 
   /** show a world as it stood at some point in its past; null hands it back to the present */
   setReplay(r: { id: string; height: number; radius: number; tiers: number; moat: number; build: number } | null) {
-    const was = this.replay?.id
+    const was = this.replay
+    const w = this.worlds.find((x) => x.id === (r?.id ?? was?.id))
+    const siteBefore = w ? this.siteMode(w) : false
     this.replay = r
+    if (w?.planet) {
+      const l = this.lifts.get(w.id)
+      // the replay reaches the day it earned its chain: it lifts off again, on the land
+      if (r && !this.reduced && (was?.id === r.id ? was.moat : 0) < 0.5 && r.moat >= 0.5 && !l) {
+        const sh = this.shown.get(w.id)!
+        this.startLift(w.id, { x: w.hill.x, z: w.hill.z, radius: sh.radius, height: sh.height, tiers: sh.tiers, moat: sh.moat }, true)
+      }
+      // scrubbed back before it, or the replay closed: no lift
+      if (l?.replay && (!r || r.moat < 0.5)) this.endLift(w.id)
+      if (this.siteMode(w) !== siteBefore) {
+        this.syncSettlements()
+        this.layLand()
+      }
+    }
     // a planet being replayed goes back to the land it grew on, and returns after
-    if (was !== r?.id) this.setView(this.view)
+    if (was?.id !== r?.id) this.setView(this.view)
     this.wake()
   }
 
@@ -678,6 +847,8 @@ export class FieldEngine {
     })
     this.district?.d.dispose()
     this.life.dispose()
+    for (const id of [...this.lifts.keys()]) this.endLift(id)
+    for (const id of [...this.sites.keys()]) this.dropSite(id)
     this.atmos.dispose()
     this.cosmos.dispose()
     this.cap?.day.dispose()
@@ -691,45 +862,58 @@ export class FieldEngine {
   // ── internals ──
 
   private syncSettlements() {
-    const targets = this.worlds.map((w) => w.hill)
+    const targets = this.worlds.map((w) => this.targetHill(w))
     const live = new Set(this.worlds.map((w) => w.id))
     for (const [id, st] of this.settlements) {
       if (live.has(id)) continue
       this.towns.remove(st.group)
       disposeGroup(st.group)
+      this.dropSite(id)
       this.settlements.delete(id)
     }
     const r = (n: number) => n.toFixed(1)
     for (const w of this.worlds) {
       const t = w.town
-      const key = [r(w.hill.radius), r(w.hill.height), w.hill.tiers, w.hill.moat, t.template, t.apps, t.houses, t.seed, r(t.lit)].join()
+      const site = this.siteMode(w)
+      const key = site ? `site,${r(w.hill.radius)},${t.template}` : [r(w.hill.radius), r(w.hill.height), w.hill.tiers, w.hill.moat, t.template, t.apps, t.houses, t.seed, r(t.lit)].join()
       const prev = this.settlements.get(w.id)
       if (prev?.key === key) continue
       if (prev) {
         this.towns.remove(prev.group)
         disposeGroup(prev.group)
       }
+      this.dropSite(w.id)
       this.capDirty = true
-      const group = buildSettlement({ id: w.id, ...t }, w.hill, targets, this.shared)
+      let group: THREE.Group
+      if (site) {
+        // where a world lifted off: its launch site
+        const ls = buildSite(w.id, t.template, siteOf(w.hill), targets, this.shared)
+        this.sites.set(w.id, ls)
+        this.towns.add(ls.beam, ls.scorch)
+        group = ls.group
+      } else group = buildSettlement({ id: w.id, ...t }, w.hill, targets, this.shared)
       // a world that already stood keeps standing; new building rises from the ground
       const rise = prev ? prev.rise : 0
       setLook(group, rise, 0)
       this.towns.add(group)
-      this.settlements.set(w.id, { key, group, rise: prev && prev.key.split(',').slice(4).join() === key.split(',').slice(4).join() ? prev.rise : prev ? 0.35 : 0 })
+      this.settlements.set(w.id, { key, group, rise: prev && !site && prev.key.split(',').slice(4).join() === key.split(',').slice(4).join() ? prev.rise : prev ? 0.35 : 0 })
     }
     this.atmos?.setChimneys([...this.settlements.values()].flatMap((st) => (st.group.userData.chimneys as { x: number; y: number; z: number }[]) ?? []))
-    // islands: built for every world that has (or is earning) its own chain
+    // islands: for a world ringed by water (one earning its chain in a replay), and every launch site
+    const wantIsland = (w: FieldWorld) => this.siteMode(w) || (w.hill.moat >= 0.5 && !w.planet) || (Boolean(w.planet) && this.replay?.id === w.id)
     for (const [id, isl] of this.islands) {
       const w = this.worlds.find((x) => x.id === id)
-      if (w && w.hill.moat >= 0.5) continue
+      if (w && wantIsland(w)) continue
       this.towns.remove(isl.parts.bridge, isl.parts.extras)
       disposeGroup(isl.parts.bridge)
       disposeGroup(isl.parts.extras)
       this.islands.delete(id)
     }
     for (const w of this.worlds) {
-      if (w.hill.moat < 0.5) continue
-      const key = [r(w.hill.radius), r(w.hill.height), w.hill.tiers, w.town.template].join()
+      if (!wantIsland(w)) continue
+      const site = this.siteMode(w)
+      const hill = site ? siteOf(w.hill) : w.hill
+      const key = [site ? 'site' : '', r(hill.radius), r(hill.height), hill.tiers, w.town.template].join()
       const prev = this.islands.get(w.id)
       if (prev?.key === key) continue
       if (prev) {
@@ -738,7 +922,7 @@ export class FieldEngine {
         disposeGroup(prev.parts.extras)
       }
       this.capDirty = true
-      const parts = buildIsland(w.id, w.town.template, w.hill, targets, this.shared)
+      const parts = buildIsland(w.id, w.town.template, hill, targets, this.shared, { lighthouse: !site })
       this.towns.add(parts.bridge, parts.extras)
       revealBridge(parts, 0)
       this.islands.set(w.id, { key, parts })
@@ -852,18 +1036,75 @@ export class FieldEngine {
     const driftOnly = this.drift && !this.reduced && !easing && idle
     if (driftOnly) moving = true
 
+    // worlds lifting off: the ground shakes, then the world tears free and climbs away
+    this.follow = { y: 0, shake: 0 }
+    for (const [id, l] of this.lifts) {
+      const w = this.worlds.find((x) => x.id === id)
+      if (!w) {
+        this.endLift(id)
+        continue
+      }
+      moving = true
+      const t = (now - l.t0) / 1000
+      const watched = (this.view.kind === 'world' || this.view.kind === 'district') && this.view.id === id && this.sp.goal === 0
+      if (l.phase === 'rumble') {
+        // dust and embers spitting from the rim, more as it builds
+        if (t > l.fx) {
+          l.fx = t + 0.1
+          const a = Math.random() * Math.PI * 2, rr = l.from.radius * (0.85 + Math.random() * 0.3)
+          const x = l.from.x + Math.cos(a) * rr, z = l.from.z + Math.sin(a) * rr
+          this.atmos.burst(x, heightAt(x, z, this.hills()) + 0.15, z, Math.random() < 0.55 ? 'dust' : 'bad')
+        }
+        if (watched) this.follow.shake = 0.04 + 0.14 * (t / RUMBLE)
+        if (t >= RUMBLE) this.tearFree(id, l, w)
+      } else if (l.chunk) {
+        const u = clamp01((t - RUMBLE) / CLIMB)
+        // a heave, then an ever faster climb, swaying a little as it goes
+        const y = smooth(0, 0.12, u) * 0.6 + 40 * Math.pow(u, 2.3)
+        l.chunk.pivot.position.y = y
+        l.chunk.pivot.rotation.z = Math.sin(t * 1.6) * 0.035 * u
+        l.chunk.pivot.rotation.x = Math.cos(t * 1.25) * 0.03 * u
+        const fade = 1 - smooth(0.8, 1, u)
+        ;(l.chunk.top.material as THREE.MeshBasicMaterial).opacity = fade
+        ;(l.chunk.under.material as THREE.MeshLambertMaterial).opacity = fade
+        for (const gr of l.carried) setLook(gr, 1, fade)
+        // rubble falling from beneath
+        if (t > l.fx && u < 0.8) {
+          l.fx = t + 0.16
+          this.atmos.burst(l.from.x + (Math.random() - 0.5) * l.from.radius, y - l.chunk.depth * 0.6, l.from.z + (Math.random() - 0.5) * l.from.radius, 'dust')
+        }
+        if (watched) {
+          this.follow.y = Math.min(y * 0.5, 14)
+          this.follow.shake = 0.18 * (1 - smooth(0, 0.25, u))
+        }
+        if (u >= 1) {
+          // gone from the land: it arrives in space as a planet
+          const done = !l.replay
+          this.endLift(id)
+          this.capDirty = true
+          if (done) {
+            this.cosmos.arrive(id, w.hill.x, w.hill.z)
+            if (watched) {
+              this.tripFocus = { x: w.hill.x, z: w.hill.z }
+              this.focusSet = true
+              this.setView(this.view)
+            }
+          }
+        }
+      }
+    }
+
     // hills ease toward their targets: growth, terraces, the moat, focus and filters
     const g = 1 - Math.pow(0.12, dt)
     this.worlds.forEach((w, i) => {
       const s = this.shown.get(w.id)!
       const green = w.id === this.focus ? 1 : w.id === this.hover ? 0.55 : 0
       const rp = this.replay?.id === w.id ? this.replay : null
-      const target = { height: rp ? rp.height : w.hill.height, radius: rp ? rp.radius : w.hill.radius, tiers: rp ? rp.tiers : w.hill.tiers, moat: rp ? rp.moat : w.hill.moat, green, muted: w.muted ? 1 : 0, trouble: rp ? 0 : w.trouble }
-      const ceremony = this.ceremonies.has(w.id)
+      const th = this.targetHill(w)
+      const target = { height: th.height, radius: th.radius, tiers: th.tiers, moat: th.moat, green, muted: w.muted ? 1 : 0, trouble: rp || this.siteMode(w) ? 0 : w.trouble }
       for (const key of Object.keys(target) as (keyof typeof target)[]) {
-        // growth is unhurried; the moat opens slower still, slowest of all during a ceremony.
-        // a replay follows the scrubber closely
-        const speed = rp ? 1 - Math.pow(0.004, dt) : key === 'moat' ? 1 - Math.pow(ceremony ? 0.74 : 0.5, dt) : key === 'trouble' ? 1 - Math.pow(0.6, dt) : key === 'height' ? 1 - Math.pow(0.25 + (i % 5) * 0.05, dt) : g
+        // growth is unhurried; the moat opens slower still. A replay follows the scrubber closely
+        const speed = rp ? 1 - Math.pow(0.004, dt) : key === 'moat' ? 1 - Math.pow(0.5, dt) : key === 'trouble' ? 1 - Math.pow(0.6, dt) : key === 'height' ? 1 - Math.pow(0.25 + (i % 5) * 0.05, dt) : g
         const next = this.reduced ? target[key] : lerp(s[key], target[key], speed)
         // settle exactly on the target, so what waits on "fully grown" gets there
         if (Math.abs(next - target[key]) > 0.002) {
@@ -895,19 +1136,17 @@ export class FieldEngine {
       u.uMeta.value[i].set(s.tiers, s.moat, s.green, s.muted)
       u.uGlow.value[i] = w.town.seed ? 0.15 : 0.3 + w.town.lit * 0.7
       u.uTrouble.value[i] = s.trouble
-      const c = this.ceremonies.get(w.id)
-      if (c !== undefined && now - c > 12_000) this.ceremonies.delete(w.id)
-      else if (c !== undefined && !this.reduced && Math.random() < dt * 1.4) this.atmos.burst(w.hill.x + (Math.random() - 0.5) * w.hill.radius, s.height, w.hill.z + (Math.random() - 0.5) * w.hill.radius, 'big')
     })
     // settlements appear once their hill has grown into place
     for (const w of this.worlds) {
       const st = this.settlements.get(w.id)
       const s = this.shown.get(w.id)!
       if (!st) continue
-      const grown = Math.min(1, Math.max(0, (s.height / Math.max(w.hill.height, 0.01) - 0.9) / 0.1))
+      const site = this.siteMode(w)
+      const grown = Math.min(1, Math.max(0, (s.height / Math.max(this.targetHill(w).height, 0.01) - 0.9) / 0.1))
       const replaced = this.district?.input.id === w.id ? this.district.shown : 0
       // in a replay, buildings stand as far as the world had built by then
-      if (this.replay?.id === w.id) {
+      if (this.replay?.id === w.id && !site) {
         const e = this.replay.build
         // the town shrinks with the hill, so it sits on the slopes it had then
         const rx = s.radius / Math.max(w.hill.radius, 0.01)
@@ -928,12 +1167,17 @@ export class FieldEngine {
       }
       const e = 1 - Math.pow(1 - st.rise, 3)
       setLook(st.group, e, (1 - s.muted * 0.75) * (1 - replaced) * Math.min(1, st.rise * 3))
+      const ls = this.sites.get(w.id)
+      if (ls) lookSite(ls, clamp01(st.rise) * (1 - s.muted * 0.75), this.night.k)
     }
     // islands: the bridge is laid as the water opens; the lighthouse and pier come with it
     for (const [id, isl] of this.islands) {
       const s = this.shown.get(id)
       if (!s) continue
-      const k = Math.min(1, Math.max(0, (s.moat - 0.3) / 0.6))
+      // a launch site's bridge is laid again once the world has climbed clear
+      const st = this.settlements.get(id)
+      const site = isl.key.startsWith('site')
+      const k = site ? clamp01(((st?.rise ?? 1) + 0.6) / 0.9) : Math.min(1, Math.max(0, (s.moat - 0.3) / 0.6))
       revealBridge(isl.parts, k)
       setLook(isl.parts.extras, 1, Math.min(1, k * 1.5) * (1 - s.muted * 0.75))
     }
@@ -984,13 +1228,22 @@ export class FieldEngine {
     const over = smooth(0.36, 0.52, x)
     const open = inOut(clamp01((x - 0.45) / 0.55))
     const c = this.cam
-    const top: Cam = { tx: 0, tz: 0, dist: RISE, tilt: 0.1, az: c.az }
+    const top: Cam = { tx: this.tripFocus.x, tz: this.tripFocus.z, dist: RISE, tilt: 0.1, az: c.az }
     const lc: Cam = rise > 0 ? { tx: lerp(c.tx, top.tx, rise), tz: lerp(c.tz, top.tz, rise), dist: lerp(c.dist, top.dist, rise), tilt: lerp(c.tilt, top.tilt, rise), az: c.az } : c
 
     if (over < 1) {
-      const ground = Math.max(0, heightAt(lc.tx, lc.tz, this.hills()) * 0.6) * (1 - rise)
+      // watching a world lift off: look up after it, step back, and feel the ground shake
+      const fy = this.follow.y
+      const ld = lc.dist + fy * 1.3
+      const ground = Math.max(0, heightAt(lc.tx, lc.tz, this.hills()) * 0.6) * (1 - rise) + fy
       const target = new THREE.Vector3(lc.tx, ground, lc.tz)
-      this.camera.position.set(lc.tx + Math.sin(lc.az) * Math.sin(lc.tilt) * lc.dist, ground + Math.cos(lc.tilt) * lc.dist, lc.tz + Math.cos(lc.az) * Math.sin(lc.tilt) * lc.dist)
+      this.camera.position.set(lc.tx + Math.sin(lc.az) * Math.sin(lc.tilt) * ld, ground + Math.cos(lc.tilt) * ld, lc.tz + Math.cos(lc.az) * Math.sin(lc.tilt) * ld)
+      const sh = this.follow.shake * (this.reduced ? 0 : 1) * ld * 0.004
+      if (sh > 0) {
+        target.x += (Math.random() - 0.5) * sh
+        target.y += (Math.random() - 0.5) * sh
+        target.z += (Math.random() - 0.5) * sh
+      }
       this.camera.lookAt(target)
       this.camera.updateMatrixWorld()
       if (this.hfDirty) {
@@ -1001,13 +1254,24 @@ export class FieldEngine {
       this.renderer.render(this.scene, this.camera)
     }
     if (over > 0) {
-      // the space camera starts exactly above the home planet's map, as high as the land view rose
-      const s0: SCam = { tx: 0, ty: 0, tz: 0, dist: GLOBE_R + (RISE * GLOBE_R) / ARC, tilt: 0.1, az: top.az }
+      // the space camera starts exactly where the land view topped out, carried onto the
+      // home planet: above the same spot of its map, at the same scale, facing the same way
+      const f = this.tripFocus
+      const fl = Math.hypot(f.x, f.z)
+      const arc = fl / ARC
+      const n = new THREE.Vector3(fl > 1e-4 ? (Math.sin(arc) * f.x) / fl : 0, Math.cos(arc), fl > 1e-4 ? (Math.sin(arc) * f.z) / fl : 0)
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n)
+      const ta = n.clone().multiplyScalar(GLOBE_R)
+      const pa = new THREE.Vector3(Math.sin(top.az) * Math.sin(top.tilt), Math.cos(top.tilt), Math.cos(top.az) * Math.sin(top.tilt))
+        .multiplyScalar((RISE * GLOBE_R) / ARC)
+        .applyQuaternion(q)
+        .add(ta)
       const sc = this.scam
-      const k = open
-      const cc: SCam = { tx: lerp(s0.tx, sc.tx, k), ty: lerp(s0.ty, sc.ty, k), tz: lerp(s0.tz, sc.tz, k), dist: lerp(s0.dist, sc.dist, k), tilt: lerp(s0.tilt, sc.tilt, k), az: lerp(s0.az, sc.az, k) }
-      this.scamera.position.set(cc.tx + Math.sin(cc.az) * Math.sin(cc.tilt) * cc.dist, cc.ty + Math.cos(cc.tilt) * cc.dist, cc.tz + Math.cos(cc.az) * Math.sin(cc.tilt) * cc.dist)
-      this.scamera.lookAt(cc.tx, cc.ty, cc.tz)
+      const tb = new THREE.Vector3(sc.tx, sc.ty, sc.tz)
+      const pb = new THREE.Vector3(sc.tx + Math.sin(sc.az) * Math.sin(sc.tilt) * sc.dist, sc.ty + Math.cos(sc.tilt) * sc.dist, sc.tz + Math.cos(sc.az) * Math.sin(sc.tilt) * sc.dist)
+      this.scamera.position.lerpVectors(pa, pb, open)
+      this.scamera.up.lerpVectors(n, new THREE.Vector3(0, 1, 0), open).normalize()
+      this.scamera.lookAt(ta.lerp(tb, open))
       this.scamera.updateMatrixWorld()
       this.cosmos.step(dt, (now - this.t0) / 1000, this.scamera, this.renderer.getPixelRatio(), { focus: this.spaceTarget, hover: this.hover, still: this.reduced })
       if (over >= 1) this.renderer.render(this.cosmos.scene, this.scamera)

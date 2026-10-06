@@ -2,7 +2,7 @@ import type { Stage } from '@/lib/types'
 
 /**
  * The three stages as map symbols, matching what the Field draws: a survey stake for a
- * seed, terraces for a realm, an island ringed by water for a sovereign world.
+ * seed, terraces for a realm, a planet in its orbit for a sovereign world.
  */
 export function StageGlyph({ stage, className }: { stage: Stage; className?: string }) {
   return (

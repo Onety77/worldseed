@@ -512,6 +512,10 @@ interface Planet {
   spin: number
   /** 0 … 1 as a new planet takes its place */
   shown: number
+  /** still on the land, lifting off: not in space yet */
+  held: boolean
+  /** flying out from the home planet to its orbit */
+  arrival: { from: THREE.Vector3; k: number } | null
 }
 
 export class Cosmos {
@@ -638,7 +642,11 @@ export class Cosmos {
       if (prev) this.drop(prev)
       const p = this.build(input, key, radius, i)
       // a planet that was already here keeps its place; a new one grows into it
-      if (prev) p.shown = prev.shown
+      if (prev) {
+        p.shown = prev.shown
+        p.held = prev.held
+        p.arrival = prev.arrival
+      }
       this.planets.set(input.id, p)
     })
   }
@@ -697,7 +705,7 @@ export class Cosmos {
     line.scale.setScalar(radius)
     line.quaternion.copy(q)
     this.scene.add(group, line)
-    return { key, input, maps, r: pr, group, tilt, body, atmos, ring, moons, line, orbit: { radius, phase: order * 2.39996 + 0.6 + (r() - 0.5) * 0.3, speed: 0.012 / Math.sqrt(radius / 23), q }, spin: 0.05 + r() * 0.05, shown: 0 }
+    return { key, input, maps, r: pr, group, tilt, body, atmos, ring, moons, line, orbit: { radius, phase: order * 2.39996 + 0.6 + (r() - 0.5) * 0.3, speed: 0.012 / Math.sqrt(radius / 23), q }, spin: 0.05 + r() * 0.05, shown: 0, held: false, arrival: null }
   }
 
   private drop(p: Planet) {
@@ -712,6 +720,23 @@ export class Cosmos {
     p.maps.forEach((m) => m.dispose())
   }
 
+  /** keep a planet out of sight while its world is still lifting off the land */
+  hold(id: string) {
+    const p = this.planets.get(id)
+    if (p && !p.arrival) p.held = true
+  }
+
+  /** the world has left the land at (x, z): it rises from that spot on the home planet and flies out to its orbit */
+  arrive(id: string, x: number, z: number) {
+    const p = this.planets.get(id)
+    if (!p) return
+    const l = Math.hypot(x, z), a = l / ARC
+    const from = new THREE.Vector3(l > 1e-4 ? (Math.sin(a) * x) / l : 0, Math.cos(a), l > 1e-4 ? (Math.sin(a) * z) / l : 0).multiplyScalar(GLOBE_R * 1.02)
+    p.held = false
+    p.shown = 1
+    p.arrival = { from, k: 0 }
+  }
+
   ids() {
     return [...this.planets.keys()]
   }
@@ -720,7 +745,7 @@ export class Cosmos {
   planet(id: string) {
     const p = this.planets.get(id)
     // reach: what a close view frames, the planet and its rings (moons come and go)
-    return p ? { pos: p.group.position, r: p.r * Math.max(0.001, p.group.scale.x), reach: p.r * (p.ring ? 2.35 : 1.55) } : null
+    return p && !p.held ? { pos: p.group.position, r: p.r * Math.max(0.001, p.group.scale.x), reach: p.r * (p.ring ? 2.35 : 1.55) } : null
   }
 
   /** the farthest any planet goes from the home planet */
@@ -734,10 +759,33 @@ export class Cosmos {
     if (!look.still) this.orbitT += dt
     const ex = new THREE.Vector3()
     for (const [id, p] of this.planets) {
+      p.group.visible = !p.held
+      p.line.visible = !p.held
+      if (p.held) continue
       p.shown = look.still ? 1 : Math.min(1, p.shown + dt * 0.45)
-      const e = 1 - Math.pow(1 - p.shown, 3)
+      let e = 1 - Math.pow(1 - p.shown, 3)
       const a = p.orbit.phase + this.orbitT * p.orbit.speed
       p.group.position.set(Math.cos(a) * p.orbit.radius, 0, Math.sin(a) * p.orbit.radius).applyQuaternion(p.orbit.q)
+      // arriving: out from the home planet on a curve, small and bright, growing into its orbit
+      let flare = 0
+      const ar = p.arrival
+      if (ar) {
+        ar.k = look.still ? 1 : Math.min(1, ar.k + dt / 4.8)
+        const k = ar.k < 0.5 ? 4 * ar.k ** 3 : 1 - Math.pow(-2 * ar.k + 2, 3) / 2
+        const mid = ar.from.clone().multiplyScalar(2.1).add(new THREE.Vector3(0, GLOBE_R * 0.6, 0))
+        const end = p.group.position.clone()
+        p.group.position.set(0, 0, 0).addScaledVector(ar.from, (1 - k) ** 2).addScaledVector(mid, 2 * (1 - k) * k).addScaledVector(end, k * k)
+        e = 0.16 + 0.84 * k
+        flare = 1 - k
+        const count = Math.floor(192 * k)
+        p.line.geometry.setDrawRange(0, Math.max(2, count))
+        for (const m of p.moons) m.mesh.visible = k > 0.85
+        if (ar.k >= 1) {
+          p.arrival = null
+          p.line.geometry.setDrawRange(0, Infinity)
+          for (const m of p.moons) m.mesh.visible = true
+        }
+      }
       p.group.scale.setScalar(Math.max(0.001, e))
       if (!look.still) p.body.rotation.y += dt * p.spin
       const on = look.focus === id ? 1 : look.hover === id ? 0.6 : 0
@@ -745,7 +793,7 @@ export class Cosmos {
       am.uniforms.uC.value.copy(p.group.position)
       am.uniforms.uR.value = p.r * e
       am.uniforms.uRa.value = p.r * e * (STYLES[p.input.template].bands ? 1.07 : 1.1)
-      am.uniforms.uK.value = 0.6 + on * 0.5
+      am.uniforms.uK.value = 0.6 + on * 0.5 + flare * 2.2
       ;(p.line.material as THREE.LineBasicMaterial).opacity = (0.09 + on * 0.22) * e
       if (p.ring) {
         const rm = p.ring.material as THREE.ShaderMaterial
