@@ -182,10 +182,6 @@ float lineAt(float v, float width) {
   float w = max(fwidth(v), 1e-4);
   return (1. - smoothstep(0., w * width, abs(fract(v - .5) - .5))) * (1. - smoothstep(.18, .45, w));
 }
-// soft cloud shadows drifting slowly over land and sea by day
-float cloud(vec2 p, float t) {
-  return smoothstep(.55, .85, vn(p * .04 + t * vec2(.035, .014)) * .65 + vn(p * .1 - t * vec2(.02, .03)) * .35);
-}
 `
 
 /** the colour of the ground at p: albedo, plus light it gives off (surf glints, lamps) */
@@ -295,8 +291,6 @@ const groundColor = glsl`
     glow += waterGlints(gp, uT, uSunDir, uNight) * smoothstep(.2, 1.2, d);
   }
 
-  // cloud shadows by day
-  col *= 1. - cloud(gp, uT) * .16 * (1. - uNight);
   // focus: the world's hill brightens a little, and a ring of light stands at its foot
   col = mix(col, col * 1.06 + uSprout * .03, focus * .5);
   glow += uSprout * halo * .2 * (1. - uNight * .45);

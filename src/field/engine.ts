@@ -202,7 +202,6 @@ export class FieldEngine {
       this.lastMoat.set(w.id, w.hill.moat)
     }
     this.syncSettlements()
-    this.atmos.setStorms(this.worlds.map((w) => ({ id: w.id, x: w.hill.x, z: w.hill.z, r: w.hill.radius, k: w.trouble })))
     const real = this.worlds.filter((w) => w.id !== 'draft')
     // a plot being planted is cleared of trees
     const draft = this.worlds.find((w) => w.id === 'draft')
@@ -697,7 +696,7 @@ export class FieldEngine {
     this.life.setLook(1, this.routesShown)
     if (!this.reduced && this.life.step(dt)) moving = true
     // with reduced motion the air holds still, but is still drawn where it is
-    if (this.atmos.step(this.reduced ? 0 : dt, this.reduced ? 0 : (now - this.t0) / 1000, this.camera.position, this.night.k) && !this.reduced) moving = true
+    if (this.atmos.step(this.reduced ? 0 : dt, this.reduced ? 0 : (now - this.t0) / 1000, this.night.k) && !this.reduced) moving = true
     if (this.atmos.busy()) moving = true
 
     this.pings = this.pings.filter((p) => now - p.at < (Math.abs(p.scale) > 1.2 ? 3600 : 2400))
