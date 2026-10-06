@@ -1,7 +1,22 @@
 import type { ReactNode } from 'react'
+import { useInSpace } from '@/field/Field'
 
-/** How to read the Field, as a map legend. */
+/** How to read the Field, as a map legend: the land, or the planets when you're out in space. */
 export function Legend() {
+  const space = useInSpace()
+  if (space)
+    return (
+      <div>
+        <p className="label pb-2">Reading the planets</p>
+        <dl className="grid gap-2 text-[12px] leading-snug text-ink-2">
+          <Row icon={<><circle cx="10" cy="10" r="5" /><path d="M2.5 13.5c3-3.2 12-6.6 15-4.6" /></>}>A planet: a world with its own chain; its size follows the people it keeps</Row>
+          <Row icon={<><circle cx="10" cy="10" r="3.2" /><ellipse cx="10" cy="10" rx="8" ry="3" /></>}>Rings: a treasury past $2M</Row>
+          <Row icon={<><circle cx="8" cy="11" r="4.5" /><circle cx="16" cy="5" r="1.6" /></>}>Moons: its revenue</Row>
+          <Row icon={<><circle cx="10" cy="10" r="6.5" /><path d="M10 3.5a6.5 6.5 0 0 1 0 13" fill="currentColor" fillOpacity=".25" stroke="none" /><circle cx="12.5" cy="9" r=".6" fill="currentColor" /><circle cx="13.5" cy="12" r=".6" fill="currentColor" /></>}>Lights on its night side: its holders</Row>
+          <Row icon={<path d="M3 16c3-8 9-11 14-12" strokeDasharray="2 2" className="stroke-green" strokeWidth="1.6" />}>A thread back to the launch site it lifted off from</Row>
+        </dl>
+      </div>
+    )
   return (
     <div>
       <p className="label pb-2">Reading the Field</p>

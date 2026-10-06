@@ -124,41 +124,55 @@ void main() {
   vec3 w = vec3(fbm3(q + 3.1), fbm3(q + 7.7), fbm3(q + 11.3));
   // big continents first; the fine octaves only roughen their coasts
   float h = fbm3(q + w * .45) * .8 + fbm(q * 2.6 + w) * .22;
-  // the capital stands on its own land, facing out from the planet's equator
-  float cap = smoothstep(.86, .975, dot(p, vec3(0., 0., 1.)));
-  h += cap * .6;
+  // the capital always stands on land (low, easy ground) facing out from the equator
+  float cap = smoothstep(.88, .975, dot(p, vec3(0., 0., 1.)));
+  h = mix(h, max(h, uSea + .07), cap);
   vec3 col;
   float land = 1.;
   float wet = 0.;
+  float relief = 0.;
   if (uBands > .5) {
     // a banded giant: soft belts that wander, and one great storm
     float lat = p.y + w.x * .07 + fbm3(vec3(p.x * 2., p.y * 9., p.z * 2.) + uSeed) * .05;
     float b = sin(lat * 13. + fbm3(vec3(lat * 4., uSeed, 1.)) * 2.5);
     col = mix(uLow, uMid, smoothstep(-.7, .7, b));
     col = mix(col, uHigh, smoothstep(.6, .95, sin(lat * 29. + 1.3)) * .55);
-    col *= .94 + .1 * snoise(vec3(p.x * 3., p.y * 40., p.z * 3.) + uSeed);
+    // fine streaks along the belts
+    col *= .93 + .1 * snoise(vec3(p.x * 3., p.y * 60., p.z * 3.) + uSeed) + .04 * snoise(vec3(p.x * 9., p.y * 140., p.z * 9.));
     vec3 eye = normalize(vec3(.8, -.32, .5));
     float d = length((p - eye) * vec3(1., 2.3, 1.));
     float swirl = smoothstep(.2, .0, d);
     col = mix(col, uHigh * 1.08, swirl * (.6 + .4 * sin(d * 60.)));
     land = 0.;
+    relief = (b * .5 + .5) * .12 + swirl * .15;
   } else {
-    land = smoothstep(uSea - .012, uSea + .012, h);
+    land = smoothstep(uSea - .006, uSea + .006, h);
     float depth = clamp((uSea - h) * 3.5, 0., 1.);
-    vec3 sea = mix(uShallow, uDeep, smoothstep(0., .55, depth));
+    // a shelf of shallows along every coast, then deep water
+    vec3 sea = mix(uShallow, uDeep, smoothstep(0., .45, depth));
+    sea *= .95 + .08 * fbm3(p * 9. + uSeed);
     float e = clamp((h - uSea) * 2.4, 0., 1.);
-    vec3 ground = mix(uLow, uMid, smoothstep(.04, .42, e));
-    ground = mix(ground, uHigh, smoothstep(.45, .92, e));
-    ground *= .92 + .16 * fbm3(p * 14. + uSeed);
+    // lowlands vary between wetter and drier; uplands turn rocky; the highest ground pales
+    float moist = fbm3(p * 4.5 + uSeed * .7) * .5 + .5;
+    vec3 low = mix(uLow, uMid, moist * .55);
+    vec3 ground = mix(low, uMid, smoothstep(.15, .5, e));
+    ground = mix(ground, uHigh, smoothstep(.5, .9, e));
+    // a little cooler toward the poles
+    ground = mix(ground, ground * vec3(.92, .96, 1.02) + .03, smoothstep(.45, .85, abs(p.y)));
+    ground *= .9 + .2 * fbm3(p * 16. + uSeed);
     // craters, on airless moons
     float cr = snoise(p * 6. + uSeed * 2.);
     ground *= 1. - uCrater * smoothstep(.45, .8, cr) * .35;
     ground += uCrater * smoothstep(.75, .82, cr) * .08;
+    // a pale line of beach where land meets water
+    float beach = smoothstep(uSea, uSea + .01, h) * (1. - smoothstep(uSea + .01, uSea + .028, h)) * (1. - uLava);
+    ground = mix(ground, mix(uHigh, vec3(.93, .88, .74), .5), beach * .45);
     col = mix(sea, ground, land);
     wet = 1. - land;
     float ice = smoothstep(uIceCap, uIceCap + .025, abs(p.y) + fbm3(q * 3.) * .05);
     col = mix(col, uIce, ice);
     wet *= 1. - ice;
+    relief = land * (e + .25 * fbm3(p * 22. + uSeed)) + uCrater * smoothstep(.45, .8, cr) * -.2;
   }
   // towns gather in a few regions; inside them, a fine scatter of lights joined up
   float cities = 0.;
@@ -174,17 +188,41 @@ void main() {
     float ridge = abs(fbm(q * 3.2 + w * 1.4));
     lava = ((1. - smoothstep(0., .028, ridge)) * .9 + (1. - smoothstep(0., .1, ridge)) * .18) * land;
   }
-  gl_FragColor = uPass < .5 ? vec4(col, wet) : vec4(cities, lava, 0., 1.);
+  gl_FragColor = uPass < .5 ? vec4(col, wet) : vec4(cities, lava, clamp(relief * .8 + .1, 0., 1.), 1.);
   #include <colorspace_fragment>
+}`
+
+const planetVS = glsl`
+varying vec3 vP;
+varying vec3 vN;
+varying vec3 vW;
+varying vec3 vE;
+varying vec3 vNo;
+void main() {
+  vP = position;
+  vec3 p = normalize(position);
+  // east and north on the surface, to tilt the light by the slope of the ground
+  vec3 east = normalize(vec3(p.z, 0., -p.x) + vec3(1e-5, 0., 0.));
+  vec3 north = cross(p, east);
+  mat3 m = mat3(modelMatrix);
+  vN = normalize(m * normal);
+  vE = normalize(m * east);
+  vNo = normalize(m * north);
+  vec4 w = modelMatrix * vec4(position, 1.);
+  vW = w.xyz;
+  gl_Position = projectionMatrix * viewMatrix * w;
 }`
 
 const planetFS = glsl`
 uniform sampler2D uMap, uMask;
-uniform vec3 uSun, uAtmos, uLights;
-uniform float uGlow;
+uniform vec3 uSun, uAtmos, uLights, uC, uRingN;
+uniform float uGlow, uTexel, uRelief, uRingIn, uRingOut, uRingK;
 varying vec3 vP;
 varying vec3 vN;
 varying vec3 vW;
+varying vec3 vE;
+varying vec3 vNo;
+${NOISE}
 void main() {
   vec3 p = normalize(vP);
   float u = atan(p.x, p.z) / 6.2831853 + .5;
@@ -197,19 +235,41 @@ void main() {
   vec3 col = a.rgb;
   float wet = a.a;
 
-  vec3 n = normalize(vN);
+  // relief: the slope of the ground gives every range a lit side and a shaded side
+  float hx = texture2D(uMask, uv + vec2(uTexel, 0.)).b - m.b;
+  float hy = texture2D(uMask, uv + vec2(0., uTexel * 2.)).b - m.b;
+  vec3 n0 = normalize(vN);
+  vec3 n = normalize(n0 - (normalize(vE) * hx + normalize(vNo) * hy) * uRelief);
   vec3 v = normalize(cameraPosition - vW);
+  float ndl0 = dot(n0, uSun);
   float ndl = dot(n, uSun);
-  float day = smoothstep(-.1, .28, ndl);
-  vec3 lit = col * (.035 + 1.08 * max(ndl, 0.));
-  // the sun on open water
+  float day = smoothstep(-.12, .3, ndl0);
+  // soft light that wraps a little past the terminator
+  float diff = clamp((ndl + .06) / 1.06, 0., 1.);
+  // close up the ground keeps a fine grain, so it never goes soft
+  col *= 1. + .04 * snoise(p * 240.) * (1. - wet);
+  vec3 lit = col * (.028 + 1.06 * diff);
+  // where day turns to night, the light runs warm through the air
+  float dusk = smoothstep(-.06, .08, ndl0) * (1. - smoothstep(.08, .32, ndl0));
+  lit = mix(lit, lit * vec3(1.3, .82, .58), dusk * .5 * uGlow);
+  // the sun on open water, small and sharp
   vec3 hv = normalize(uSun + v);
-  lit += wet * pow(max(dot(n, hv), 0.), 380.) * vec3(1., .95, .85) * .22 * day;
-  // the air at the edge of the disc, bright on the lit side
-  float fr = pow(1. - max(dot(n, v), 0.), 2.6);
-  lit += uAtmos * fr * smoothstep(-.3, .45, ndl) * .5 * uGlow;
+  lit += wet * pow(max(dot(n0, hv), 0.), 1400.) * vec3(1., .93, .8) * .32 * day;
+  // a thin bright edge of air on the lit side
+  float ndv = max(dot(n0, v), 0.);
+  lit += uAtmos * (pow(1. - ndv, 6.) * 1.2 + pow(1. - ndv, 2.2) * .1) * smoothstep(-.25, .5, ndl0) * uGlow;
+  // the rings throw their shadow across the planet
+  if (uRingK > 0.) {
+    float dn = dot(uSun, uRingN);
+    float t = dot(uC - vW, uRingN) / (abs(dn) > 1e-4 ? dn : 1e-4);
+    if (t > 0.) {
+      float r = length(vW + uSun * t - uC);
+      float inside = smoothstep(uRingIn, uRingIn * 1.05, r) * (1. - smoothstep(uRingOut * .95, uRingOut, r));
+      lit *= 1. - inside * uRingK * (.45 + .2 * sin(r / uRingOut * 70.));
+    }
+  }
   // cities on the night side; lava glowing, brighter in the dark
-  lit += uLights * m.r * smoothstep(.05, -.25, ndl) * 1.25;
+  lit += uLights * m.r * smoothstep(.05, -.25, ndl0) * 1.25;
   lit += vec3(1., .38, .1) * m.g * (.22 + (1. - day) * 1.2);
   gl_FragColor = vec4(lit, 1.);
   #include <colorspace_fragment>
@@ -234,9 +294,13 @@ void main() {
   vec3 closest = o + d * dot(uC - o, d);
   float b = length(closest - uC);
   float t = clamp((b - uR) / (uRa - uR), 0., 1.);
-  float g = pow(1. - t, 3.2);
-  float s = smoothstep(-.42, .6, dot(normalize(closest - uC), uSun));
-  gl_FragColor = vec4(uColor * g * s * uK, 1.);
+  // dense at the limb, thinning fast: a fine line of air, not a halo
+  float g = exp(-t * 5.5) * (1. - t);
+  float ld = dot(normalize(closest - uC), uSun);
+  float s = smoothstep(-.35, .5, ld);
+  // where the limb crosses from day to night the air glows warmer
+  vec3 c = mix(uColor, vec3(1., .62, .38), (1. - smoothstep(-.1, .35, ld)) * smoothstep(-.35, -.1, ld) * .7);
+  gl_FragColor = vec4(c * g * s * uK, 1.);
   #include <colorspace_fragment>
 }`
 
@@ -269,9 +333,11 @@ void main() {
   vec3 oc = vW - uC;
   float bb = dot(oc, uSun);
   float c = dot(oc, oc) - uR * uR;
-  float shade = (bb < 0. && bb * bb - c > 0.) ? .1 : 1.;
+  // the planet's shadow, with a soft edge
+  float miss = sqrt(max(dot(oc, oc) - bb * bb, 0.)) / uR;
+  float shade = bb < 0. ? mix(.22, 1., smoothstep(.9, 1.06, miss)) : 1.;
   float l = .3 + .8 * abs(dot(normalize(uNormal), uSun));
-  gl_FragColor = vec4(col * l * shade, a * .88 * uK);
+  gl_FragColor = vec4(col * l * shade, a * .74 * uK);
   #include <colorspace_fragment>
 }`
 
@@ -298,15 +364,21 @@ void main() {
 
   vec3 seaDay = uHave > .5 ? corners(uDay) : vec3(.05, .2, .32);
   vec3 seaNight = uHave > .5 ? corners(uNight) : vec3(.01, .02, .05);
-  // the open ocean beyond the survey: gentle variation, a few far islands
-  float v = fbm3(p * 5. + 2.);
-  vec3 farDay = seaDay * (.92 + .1 * v);
+  // the open ocean beyond the survey: deep water with slow variation, shallows round a
+  // scatter of far archipelagos, and a fine texture of swell
+  float v = fbm3(p * 3. + 2.);
+  float hgt = fbm3(p * 2.4 + 9.) + fbm3(p * 9. + 4.) * .14;
+  float far = smoothstep(1.3, 1.62, a);
+  float shallow = smoothstep(.2, .34, hgt) * far;
+  vec3 farDay = seaDay * (.84 + .3 * v) * (1. + .025 * snoise(p * 140.));
+  farDay = mix(farDay, seaDay * vec3(1.25, 1.55, 1.45) + vec3(.0, .03, .03), shallow * .7);
   vec3 farNight = seaNight * (.9 + .1 * v);
-  float hgt = fbm3(p * 2.4 + 9.);
-  float isle = smoothstep(.36, .39, hgt) * smoothstep(1.32, 1.6, a);
-  float beach = smoothstep(.33, .36, hgt) * smoothstep(1.32, 1.6, a) * (1. - isle);
-  farDay = mix(farDay, uSand, beach * .8);
-  farDay = mix(farDay, uIsle * (.9 + .2 * v), isle);
+  float isle = smoothstep(.34, .355, hgt) * far;
+  float beach = smoothstep(.325, .34, hgt) * far * (1. - isle);
+  float forest = smoothstep(.0, .3, fbm3(p * 30. + 1.));
+  vec3 land = mix(uIsle, uIsle * vec3(.72, .86, .7), forest) * (.92 + .16 * snoise(p * 90.));
+  farDay = mix(farDay, uSand, beach * .85);
+  farDay = mix(farDay, land, isle);
   farNight = mix(farNight, uIsle * .04, isle);
 
   vec3 dayC = mix(farDay, texture2D(uDay, uv).rgb, inside);
@@ -318,11 +390,13 @@ void main() {
   float day = smoothstep(-.14, .26, ndl);
   // the captured map already carries its own sunlight; this only turns it toward night
   vec3 col = mix(nightC * 1.15, dayC * (.62 + .62 * max(ndl, 0.)), day);
+  // the warm band where day turns to night
+  float dusk = smoothstep(-.06, .08, ndl) * (1. - smoothstep(.08, .32, ndl));
+  col = mix(col, col * vec3(1.28, .84, .62), dusk * .45);
   float wet = 1. - max(isle, inside * .6);
-  vec3 hv = normalize(uSun + vw);
-  col += wet * pow(max(dot(n, hv), 0.), 80.) * .35 * day;
-  float fr = pow(1. - max(dot(n, vw), 0.), 2.4);
-  col += uAtmos * fr * smoothstep(-.3, .45, ndl) * .9;
+  // a fine bright edge of air on the lit side
+  float ndv = max(dot(n, vw), 0.);
+  col += uAtmos * (pow(1. - ndv, 6.) * 1.1 + pow(1. - ndv, 2.4) * .12) * smoothstep(-.3, .45, ndl);
   gl_FragColor = vec4(col, 1.);
   #include <colorspace_fragment>
 }`
@@ -349,23 +423,60 @@ void main() {
   gl_FragColor = vec4(vC, a * a);
   #include <colorspace_fragment>
 }`
-// worked out per vertex: the band is soft enough that the sphere's corners carry it
+// the space behind everything, in the site's own ink: near-black with a trace of green,
+// warming toward the sun, a faint band where the stars gather (worked out per vertex:
+// it is soft enough that the sphere's corners carry it)
 const bandVS = glsl`
-uniform vec3 uN, uA, uB;
+uniform vec3 uN, uSun, uInk, uBand, uWarm, uFar;
 varying vec3 vC;
 ${NOISE}
 void main() {
   vec3 d = normalize(position);
   float lat = dot(d, uN);
-  float band = exp(-lat * lat / .03);
-  float n = fbm3(d * 3.2) * .5 + .5;
-  vC = mix(uA, uB, n) * band * (.55 + .45 * n);
+  float band = exp(-lat * lat / .025) * (.6 + .4 * (fbm3(d * 2.6) * .5 + .5));
+  float s = max(dot(d, uSun), 0.);
+  vec3 c = uInk + uBand * band;
+  c += uWarm * (pow(s, 2.) * .6 + pow(s, 10.) * 1.1);
+  // the side away from the sun goes a shade cooler
+  c += uFar * pow(max(-dot(d, uSun), 0.), 2.);
+  vC = c;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.);
 }`
 const bandFS = glsl`
 varying vec3 vC;
 void main() {
   gl_FragColor = vec4(vC, 1.);
+  #include <colorspace_fragment>
+}`
+
+// orbits: a fine line, brightest just behind its planet, fading round the rest
+const orbitVS = glsl`
+attribute float aU;
+varying float vU;
+void main() {
+  vU = aU;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.);
+}`
+const orbitFS = glsl`
+uniform float uHead, uK, uOn;
+uniform vec3 uColor;
+varying float vU;
+void main() {
+  float behind = fract(uHead - vU);
+  float a = (.06 + .1 * uOn + (.38 + .3 * uOn) * pow(1. - behind, 5.)) * uK;
+  gl_FragColor = vec4(uColor, a);
+  #include <colorspace_fragment>
+}`
+
+// threads from each launch site on the mainland up to the planet it became
+const threadFS = glsl`
+uniform float uT, uK;
+uniform vec3 uColor;
+varying float vU;
+void main() {
+  float dash = step(fract(vU * 26. - uT * .35), .5);
+  float ends = smoothstep(0., .08, vU) * smoothstep(1., .9, vU);
+  gl_FragColor = vec4(uColor, dash * ends * uK);
   #include <colorspace_fragment>
 }`
 
@@ -405,7 +516,7 @@ const STYLES: Record<Template, Style> = {
   // dunes and a few dark lakes
   frontier: { deep: '#204f60', shallow: '#468d96', low: '#b8935c', mid: '#d4b47a', high: '#f0e2bd', ice: '#e6e2d8', atmos: '#f4dcae', lights: '#ffcf80', field: '#c4a86e', sea: -0.34, iceCap: 2, ring: ['#e6d5b0', '#a68b62'] },
 }
-const MOON: Style = { deep: '#000000', shallow: '#000000', low: '#77736d', mid: '#9c978f', high: '#c9c4ba', ice: '#e8e6e1', atmos: '#000000', lights: '#000000', sea: -9, iceCap: 2, ring: ['#000000', '#000000'] }
+const MOON: Style = { deep: '#000000', shallow: '#000000', low: '#66625c', mid: '#837e76', high: '#a8a399', ice: '#e8e6e1', atmos: '#000000', lights: '#000000', sea: -9, iceCap: 2, ring: ['#000000', '#000000'] }
 
 const C = (hex: string) => new THREE.Color(hex)
 
@@ -444,7 +555,8 @@ function surface(renderer: THREE.WebGLRenderer, style: Style, seed: number, sun:
     depthWrite: false,
   })
   const make = (srgb: boolean) => {
-    const rt = new THREE.WebGLRenderTarget(size, size / 2, { colorSpace: srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, wrapS: THREE.RepeatWrapping })
+    // colour in sRGB; the masks (and the height of the ground) in half floats, so slopes stay smooth
+    const rt = new THREE.WebGLRenderTarget(size, size / 2, { colorSpace: srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace, type: srgb ? THREE.UnsignedByteType : THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, wrapS: THREE.RepeatWrapping })
     rt.texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy())
     return rt
   }
@@ -459,7 +571,7 @@ function surface(renderer: THREE.WebGLRenderer, style: Style, seed: number, sun:
   renderer.setRenderTarget(keep)
   bake.dispose()
   const mat = new THREE.ShaderMaterial({
-    vertexShader: bodyVS,
+    vertexShader: planetVS,
     fragmentShader: planetFS,
     uniforms: {
       uMap: { value: maps[0].texture },
@@ -468,6 +580,13 @@ function surface(renderer: THREE.WebGLRenderer, style: Style, seed: number, sun:
       uAtmos: { value: C(style.atmos) },
       uLights: { value: C(style.lights) },
       uGlow: { value: opts.glow ?? 1 },
+      uTexel: { value: 1 / size },
+      uRelief: { value: (opts.crater ? 30 : 12) * (size / 1024) },
+      uC: { value: new THREE.Vector3() },
+      uRingN: { value: new THREE.Vector3(0, 1, 0) },
+      uRingIn: { value: 0 },
+      uRingOut: { value: 0 },
+      uRingK: { value: 0 },
     },
   })
   return { mat, maps }
@@ -498,12 +617,16 @@ export interface PlanetInput {
   /** 0 … 1: how much of its night side is lit */
   lights: number
   launchedAt: number
+  /** where it lifted off the mainland, in field units */
+  site: { x: number; z: number }
 }
 
 interface Planet {
   key: string
-  /** its painted surfaces */
+  /** its painted surfaces, once painted */
   maps: THREE.WebGLRenderTarget[]
+  painted: boolean
+  seed: number
   input: PlanetInput
   r: number
   group: THREE.Group
@@ -513,6 +636,9 @@ interface Planet {
   ring: THREE.Mesh | null
   moons: { mesh: THREE.Mesh; d: number; a: number; speed: number; incl: number }[]
   line: THREE.LineLoop
+  /** the thread from its launch site on the mainland */
+  thread: THREE.Line
+  from: THREE.Vector3
   orbit: { radius: number; phase: number; speed: number; q: THREE.Quaternion }
   spin: number
   /** 0 … 1 as a new planet takes its place */
@@ -526,7 +652,7 @@ interface Planet {
 export class Cosmos {
   readonly scene = new THREE.Scene()
   /** the direction toward the sun */
-  readonly sun = { value: new THREE.Vector3(-0.5, 0.55, 0.67).normalize() }
+  readonly sun = { value: new THREE.Vector3(-0.68, 0.48, 0.5).normalize() }
   private globe: THREE.Mesh
   private globeU: Record<string, THREE.IUniform>
   private globeAtmos: THREE.Mesh
@@ -542,7 +668,7 @@ export class Cosmos {
   constructor(renderer: THREE.WebGLRenderer, quality: 'high' | 'low') {
     this.renderer = renderer
     this.hi = quality === 'high'
-    this.scene.background = C('#03050b')
+    this.scene.background = C('#040706')
     this.blank.needsUpdate = true
 
     // the home planet
@@ -558,7 +684,7 @@ export class Cosmos {
       uHave: { value: 0 },
     }
     this.globe = new THREE.Mesh(new THREE.SphereGeometry(GLOBE_R, this.hi ? 160 : 96, this.hi ? 120 : 72), new THREE.ShaderMaterial({ vertexShader: bodyVS, fragmentShader: globeFS, uniforms: this.globeU }))
-    this.globeAtmos = atmosphere('#7fbcff', GLOBE_R, GLOBE_R * 1.075, this.sun)
+    this.globeAtmos = atmosphere('#8cc6ff', GLOBE_R, GLOBE_R * 1.055, this.sun)
     ;(this.globeAtmos.material as THREE.ShaderMaterial).uniforms.uK.value = 1.15
     this.scene.add(this.globe, this.globeAtmos)
 
@@ -581,7 +707,7 @@ export class Cosmos {
       pos.set([v.x, v.y, v.z], i * 3)
       const big = r()
       size[i] = big > 0.985 ? 3.2 + r() * 1.6 : big > 0.9 ? 2 + r() : 0.9 + r() * 1.1
-      c.set(tints[Math.floor(r() * tints.length)]).multiplyScalar(big > 0.9 ? 1 : 0.45 + r() * 0.45)
+      c.set(tints[Math.floor(r() * tints.length)]).multiplyScalar(big > 0.9 ? 1.15 : 0.55 + r() * 0.5)
       col.set([c.r, c.g, c.b], i * 3)
       ph[i] = r()
     }
@@ -595,7 +721,7 @@ export class Cosmos {
     this.stars.renderOrder = -2
     this.band = new THREE.Mesh(
       new THREE.SphereGeometry(1700, 96, 48),
-      new THREE.ShaderMaterial({ vertexShader: bandVS, fragmentShader: bandFS, uniforms: { uN: { value: bandN }, uA: { value: C('#0d1430') }, uB: { value: C('#2a2552') } }, side: THREE.BackSide, depthWrite: false }),
+      new THREE.ShaderMaterial({ vertexShader: bandVS, fragmentShader: bandFS, uniforms: { uN: { value: bandN }, uSun: this.sun, uInk: { value: C('#040706') }, uBand: { value: C('#11181a') }, uWarm: { value: C('#3d2b15') }, uFar: { value: C('#03080d') } }, side: THREE.BackSide, depthWrite: false }),
     )
     this.band.renderOrder = -3
     this.band.frustumCulled = false
@@ -668,9 +794,9 @@ export class Cosmos {
     tilt.rotation.z = (r() - 0.5) * 0.7
     tilt.rotation.x = (r() - 0.5) * 0.3
     const maps: THREE.WebGLRenderTarget[] = []
-    const skin = surface(this.renderer, style, (seed % 1000) / 37, this.sun, this.hi ? 1024 : 512, { lights: input.lights })
-    maps.push(...skin.maps)
-    const body = new THREE.Mesh(new THREE.SphereGeometry(1, this.hi ? 96 : 64, this.hi ? 64 : 40), skin.mat)
+    // the surfaces are painted the first time space is shown (see paint), not while the land loads
+    const blank = new THREE.MeshBasicMaterial({ color: style.deep })
+    const body = new THREE.Mesh(new THREE.SphereGeometry(1, this.hi ? 96 : 64, this.hi ? 64 : 40), blank)
     body.scale.setScalar(pr)
     tilt.add(body)
     let ring: THREE.Mesh | null = null
@@ -692,14 +818,12 @@ export class Cosmos {
       tilt.add(ring)
     }
     group.add(tilt)
-    const atmos = atmosphere(style.atmos, pr, pr * (style.bands ? 1.07 : 1.1), this.sun)
+    const atmos = atmosphere(style.atmos, pr, pr * (style.bands ? 1.05 : 1.07), this.sun)
     group.add(atmos)
     const moons: Planet['moons'] = []
     for (let i = 0; i < input.moons; i++) {
-      const ms = pr * (0.16 + r() * 0.12)
-      const ms_ = surface(this.renderer, MOON, ((seed + i * 131) % 1000) / 41, this.sun, 256, { crater: 1, glow: 0 })
-      maps.push(...ms_.maps)
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 28), ms_.mat)
+      const ms = pr * (0.12 + r() * 0.09)
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 28), new THREE.MeshBasicMaterial({ color: MOON.mid }))
       mesh.scale.setScalar(ms)
       group.add(mesh)
       moons.push({ mesh, d: pr * (input.rings ? 2.6 : 1.9) + i * pr * 0.55, a: r() * Math.PI * 2, speed: (0.16 + r() * 0.12) / (1 + i * 0.6), incl: (r() - 0.5) * 0.35 })
@@ -708,15 +832,28 @@ export class Cosmos {
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler((r() - 0.5) * 0.14, 0, (r() - 0.5) * 0.14))
     const pts: THREE.Vector3[] = []
     for (let i = 0; i < 192; i++) pts.push(new THREE.Vector3(Math.cos((i / 192) * Math.PI * 2), 0, Math.sin((i / 192) * Math.PI * 2)))
-    const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: '#cfe0ff', transparent: true, opacity: 0.1, depthWrite: false }))
+    const lg = new THREE.BufferGeometry().setFromPoints(pts)
+    lg.setAttribute('aU', new THREE.Float32BufferAttribute(pts.map((_, i) => i / pts.length), 1))
+    const line = new THREE.LineLoop(lg, new THREE.ShaderMaterial({ vertexShader: orbitVS, fragmentShader: orbitFS, uniforms: { uHead: { value: 0 }, uK: { value: 1 }, uOn: { value: 0 }, uColor: { value: C('#dce8e4') } }, transparent: true, depthWrite: false }))
     line.scale.setScalar(radius)
     line.quaternion.copy(q)
-    this.scene.add(group, line)
-    return { key, input, maps, r: pr, group, tilt, body, atmos, ring, moons, line, orbit: { radius, phase: order * 2.39996 + 0.6 + (r() - 0.5) * 0.3, speed: 0.012 / Math.sqrt(radius / 23), q }, spin: 0.05 + r() * 0.05, shown: 0, held: false, arrival: null }
+    // a dashed thread from its launch site, drawn fresh each frame as the planet moves
+    const N = 64
+    const tg = new THREE.BufferGeometry()
+    tg.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(N * 3), 3))
+    tg.setAttribute('aU', new THREE.Float32BufferAttribute(Array.from({ length: N }, (_, i) => i / (N - 1)), 1))
+    const thread = new THREE.Line(tg, new THREE.ShaderMaterial({ vertexShader: orbitVS, fragmentShader: threadFS, uniforms: { uT: { value: 0 }, uK: { value: 0.14 }, uColor: { value: C('#c4ef3a') } }, transparent: true, depthWrite: false }))
+    thread.frustumCulled = false
+    const sl = Math.hypot(input.site.x, input.site.z), sa = sl / ARC
+    const from = new THREE.Vector3(sl > 1e-4 ? (Math.sin(sa) * input.site.x) / sl : 0, Math.cos(sa), sl > 1e-4 ? (Math.sin(sa) * input.site.z) / sl : 0).multiplyScalar(GLOBE_R * 1.005)
+    this.scene.add(group, line, thread)
+    return { key, input, maps, painted: false, seed, thread, from, r: pr, group, tilt, body, atmos, ring, moons, line, orbit: { radius, phase: order * 2.39996 + 0.6 + (r() - 0.5) * 0.3, speed: 0.012 / Math.sqrt(radius / 23), q }, spin: 0.05 + r() * 0.05, shown: 0, held: false, arrival: null }
   }
 
   private drop(p: Planet) {
-    this.scene.remove(p.group, p.line)
+    this.scene.remove(p.group, p.line, p.thread)
+    p.thread.geometry.dispose()
+    ;(p.thread.material as THREE.Material).dispose()
     p.group.traverse((o) => {
       const m = o as THREE.Mesh
       m.geometry?.dispose()
@@ -751,8 +888,25 @@ export class Cosmos {
   }
 
   /** what a planet looks like, for standing on it: its style and its painted surface */
+  /** paint a planet's surface and its moons' (once) */
+  private paint(p: Planet) {
+    if (p.painted) return
+    p.painted = true
+    const skin = surface(this.renderer, STYLES[p.input.template], (p.seed % 1000) / 37, this.sun, this.hi ? 2048 : 1024, { lights: p.input.lights })
+    ;(p.body.material as THREE.Material).dispose()
+    p.body.material = skin.mat
+    p.maps.push(...skin.maps)
+    p.moons.forEach((m, i) => {
+      const ms = surface(this.renderer, MOON, ((p.seed + i * 131) % 1000) / 41, this.sun, 512, { crater: 1, glow: 0 })
+      ;(m.mesh.material as THREE.Material).dispose()
+      m.mesh.material = ms.mat
+      p.maps.push(...ms.maps)
+    })
+  }
+
   look(id: string) {
     const p = this.planets.get(id)
+    if (p) this.paint(p)
     return p ? { style: STYLES[p.input.template], map: p.maps[0].texture, mask: p.maps[1].texture, template: p.input.template } : null
   }
 
@@ -798,7 +952,9 @@ export class Cosmos {
     for (const [id, p] of this.planets) {
       p.group.visible = !p.held
       p.line.visible = !p.held
+      p.thread.visible = !p.held
       if (p.held) continue
+      this.paint(p)
       p.shown = look.still ? 1 : Math.min(1, p.shown + dt * 0.45)
       let e = 1 - Math.pow(1 - p.shown, 3)
       this.place(p)
@@ -836,15 +992,40 @@ export class Cosmos {
       const am = p.atmos.material as THREE.ShaderMaterial
       am.uniforms.uC.value.copy(p.group.position)
       am.uniforms.uR.value = p.r * e
-      am.uniforms.uRa.value = p.r * e * (STYLES[p.input.template].bands ? 1.07 : 1.1)
-      am.uniforms.uK.value = 0.6 + on * 0.5 + flare * 2.2
-      ;(p.line.material as THREE.LineBasicMaterial).opacity = (0.09 + on * 0.22) * e
+      am.uniforms.uRa.value = p.r * e * (STYLES[p.input.template].bands ? 1.05 : 1.07)
+      am.uniforms.uK.value = 0.9 + on * 0.5 + flare * 2.2
+      const lu = (p.line.material as THREE.ShaderMaterial).uniforms
+      const ang = p.orbit.phase + this.orbitT * p.orbit.speed
+      lu.uHead.value = (((ang % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2)
+      lu.uK.value = e
+      lu.uOn.value = on
+      // the thread: out from the launch site, arching up and over to the planet
+      const tp = p.thread.geometry.getAttribute('position') as THREE.BufferAttribute
+      const to = p.group.position
+      const mid = p.from.clone().add(to).multiplyScalar(0.5)
+      mid.addScaledVector(mid.clone().normalize(), mid.length() * 0.35 + GLOBE_R * 0.4)
+      for (let k = 0; k < tp.count; k++) {
+        const u = k / (tp.count - 1)
+        const v1 = (1 - u) * (1 - u), v2 = 2 * (1 - u) * u, v3 = u * u
+        tp.setXYZ(k, p.from.x * v1 + mid.x * v2 + to.x * v3, p.from.y * v1 + mid.y * v2 + to.y * v3, p.from.z * v1 + mid.z * v2 + to.z * v3)
+      }
+      tp.needsUpdate = true
+      const tu = (p.thread.material as THREE.ShaderMaterial).uniforms
+      tu.uT.value = look.still ? 0 : t
+      tu.uK.value = (0.2 + on * 0.4) * e
       if (p.ring) {
         const rm = p.ring.material as THREE.ShaderMaterial
         rm.uniforms.uC.value.copy(p.group.position)
         rm.uniforms.uR.value = p.r * e
         p.ring.updateWorldMatrix(true, false)
         rm.uniforms.uNormal.value.set(0, 0, 1).transformDirection(p.ring.matrixWorld)
+        // and the planet gets the rings' shadow
+        const bu = (p.body.material as THREE.ShaderMaterial).uniforms
+        bu.uC.value.copy(p.group.position)
+        bu.uRingN.value.copy(rm.uniforms.uNormal.value)
+        bu.uRingIn.value = rm.uniforms.uIn.value * e
+        bu.uRingOut.value = rm.uniforms.uOut.value * e
+        bu.uRingK.value = 1
       }
       for (const m of p.moons) {
         if (!look.still) m.a += dt * m.speed

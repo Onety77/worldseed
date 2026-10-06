@@ -183,6 +183,7 @@ function Sync({ engine }: { engine: FieldEngine }) {
               rings: w.treasury.balanceUsd >= 2_000_000,
               lights: Math.round(Math.min(1, Math.max(0.35, w.holders / 20_000)) * 10) / 10,
               launchedAt: w.chain?.launchedAt ?? 0,
+              site: { x: w.x, z: w.z },
             }
           : undefined,
     }))
@@ -209,6 +210,14 @@ function Sync({ engine }: { engine: FieldEngine }) {
     }
   }, [engine, pings])
   return null
+}
+
+/** Whether the Field is out in space (or on its way there). */
+export function useInSpace() {
+  const engine = useField()
+  const [space, setSpace] = useState(false)
+  useEffect(() => engine?.onFrame(() => setSpace(engine.inSpace())), [engine])
+  return space
 }
 
 /** Point the Field at something while this component is mounted. */
