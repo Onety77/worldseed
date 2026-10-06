@@ -17,6 +17,8 @@ import { rand } from './settlement'
 
 /** shared clock for anything that moves in the wind */
 export const WIND = { uT: { value: 0 } }
+/** a clearing (x, z, radius, on): trees inside it step aside, as for a plot being planted */
+export const CLEARING = { uClear: { value: new THREE.Vector4(0, 0, 0, 0) } }
 
 const GREENS = ['#5e9443', '#6fa64c', '#7fb255', '#5b8c46', '#89b95b']
 const PINES = ['#3f7449', '#4a8251', '#3a6a45']
@@ -24,11 +26,12 @@ const AUTUMN = ['#d7a03f', '#c9743b', '#e0b84c']
 const BARK = '#7a5b3d'
 const ROCKS = ['#b9b2a5', '#a9a294', '#c6c0b4']
 
-/** wind sway: the higher a vertex stands, the further it moves */
+/** wind sway (the higher a vertex stands, the further it moves) and the clearing */
 function sway(mat: THREE.Material, amount: number) {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uT = WIND.uT
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uT;').replace(
+    sh.uniforms.uClear = CLEARING.uClear
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uT;\nuniform vec4 uClear;').replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
       #ifdef USE_INSTANCING
@@ -37,6 +40,7 @@ function sway(mat: THREE.Material, amount: number) {
       float k = max(position.y, 0.) * ${amount.toFixed(3)};
       transformed.x += sin(uT * 1.3 + ph) * k;
       transformed.z += cos(uT * 1.1 + ph * 1.3) * k * .6;
+      if (uClear.w > 0. && length(ip.xz - uClear.xy) < uClear.z) transformed *= 0.;
       #endif`,
     )
   }
@@ -165,7 +169,7 @@ export class Nature {
     const make = (geo: THREE.BufferGeometry, list: Spot[], colors: string[], swayK: number, tint: (s: Spot, i: number) => string, scaleY = 1) => {
       if (!list.length) return
       const mat = new THREE.MeshLambertMaterial({ color: 0xffffff })
-      if (swayK > 0) sway(mat, swayK)
+      sway(mat, swayK)
       const mesh = new THREE.InstancedMesh(geo, mat, list.length)
       const c = new THREE.Color()
       list.forEach((s, i) => {

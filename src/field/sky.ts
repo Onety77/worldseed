@@ -16,7 +16,7 @@ const glsl = String.raw
 
 export const SKY = {
   day: { top: '#7fb9df', horizon: '#d9ecf2', sun: '#fff1d6', sunI: 2.15, skyLight: '#cfe6f5', groundLight: '#7e9a5a', hemiI: 1.15, fog: '#cfe3ea' },
-  night: { top: '#060b18', horizon: '#18273d', sun: '#8fb0e6', sunI: 0.55, skyLight: '#2a3d63', groundLight: '#0d1410', hemiI: 0.55, fog: '#111c2c' },
+  night: { top: '#070d1d', horizon: '#1b2c46', sun: '#9dbcf0', sunI: 0.8, skyLight: '#3b5688', groundLight: '#121a16', hemiI: 0.85, fog: '#14213a' },
 }
 
 const domeVS = glsl`

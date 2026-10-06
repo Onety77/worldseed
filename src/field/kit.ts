@@ -90,6 +90,8 @@ export class Builder {
   private ground = 0
   /** chance a window is lit at night: busier worlds glow brighter */
   lit = 0.5
+  /** chimney tops, for smoke */
+  chimneys: { x: number; y: number; z: number }[] = []
   private r: () => number
   private pal: (typeof PALETTES)[Template]
   // this building's own wall tint and roof shade, so a town is not all one colour
@@ -216,6 +218,7 @@ export class Builder {
     lines(this.dashes, this.dashBase, this.dashLd, 0.36)
     group.userData.own = own
     group.userData.solid = mat
+    group.userData.chimneys = this.chimneys
     return group
   }
 }
@@ -257,7 +260,7 @@ export const footing = (g: Ground, f: Frame, w: number, d: number) =>
   ) - 0.06
 
 /** a box: walls, a top, edges, and windows on its long faces */
-function box(b: Builder, f: Frame, y0: number, w: number, d: number, h: number, opts: { roof?: Tone; windows?: boolean; edges?: boolean } = {}) {
+export function box(b: Builder, f: Frame, y0: number, w: number, d: number, h: number, opts: { roof?: Tone; windows?: boolean; edges?: boolean } = {}) {
   const lo = [P(f, -w, -d, y0), P(f, w, -d, y0), P(f, w, d, y0), P(f, -w, d, y0)]
   const hi = [P(f, -w, -d, y0 + h), P(f, w, -d, y0 + h), P(f, w, d, y0 + h), P(f, -w, d, y0 + h)]
   b.quad(hi[0], hi[1], hi[2], hi[3], opts.roof ?? 'wall')
@@ -300,7 +303,7 @@ function gable(b: Builder, f: Frame, y: number, w: number, d: number, h: number,
 }
 
 /** an n-sided column */
-function cylinder(b: Builder, f: Frame, y0: number, r: number, h: number, n = 10, top: Tone = 'wall', windows = false) {
+export function cylinder(b: Builder, f: Frame, y0: number, r: number, h: number, n = 10, top: Tone = 'wall', windows = false) {
   const ring = (y: number) => Array.from({ length: n }, (_, i) => {
     const a = (i / n) * Math.PI * 2
     return [f.x + Math.cos(a) * r, y, f.z + Math.sin(a) * r]
@@ -322,7 +325,7 @@ function cylinder(b: Builder, f: Frame, y0: number, r: number, h: number, n = 10
 }
 
 /** a low-poly dome */
-function dome(b: Builder, f: Frame, y0: number, r: number, tone: Tone = 'wall') {
+export function dome(b: Builder, f: Frame, y0: number, r: number, tone: Tone = 'wall') {
   const n = 10, m = 3
   const pt = (i: number, k: number) => {
     const a = (i / n) * Math.PI * 2
@@ -385,7 +388,7 @@ export interface Site {
 }
 
 /** a hipped roof rising to a point over a w×d footprint */
-function pyramid(b: Builder, f: Frame, y: number, w: number, d: number, h: number, tone: Tone = 'roof') {
+export function pyramid(b: Builder, f: Frame, y: number, w: number, d: number, h: number, tone: Tone = 'roof') {
   const e = [P(f, -w, -d, y), P(f, w, -d, y), P(f, w, d, y), P(f, -w, d, y)]
   const top = P(f, 0, 0, y + h)
   for (let i = 0; i < 4; i++) {
@@ -395,7 +398,7 @@ function pyramid(b: Builder, f: Frame, y: number, w: number, d: number, h: numbe
 }
 
 /** a pennant on a pole, in the world's roof colour */
-function flagpole(b: Builder, x: number, z: number, y0: number, h: number) {
+export function flagpole(b: Builder, x: number, z: number, y0: number, h: number) {
   b.edge([x, y0, z], [x, y0 + h, z])
   box(b, { x, z, rot: 0 }, y0, 0.02, 0.02, h, { roof: 'trim', windows: false, edges: false })
   b.tri([x, y0 + h, z], [x + 0.5, y0 + h - 0.13, z + 0.05], [x, y0 + h - 0.28, z], 'roof')
@@ -628,7 +631,11 @@ export function house(t: Template, b: Builder, g: Ground, site: Site, r: () => n
   b.quad([door[0] - c * 0.09, plinth + 0.01, door[2] - sn * 0.09], [door[0] + c * 0.09, plinth + 0.01, door[2] + sn * 0.09], [door[0] + c * 0.09, plinth + 0.36, door[2] + sn * 0.09], [door[0] - c * 0.09, plinth + 0.36, door[2] - sn * 0.09], 'wood')
   if (t === 'creator' || r() < 0.8) gable(b, f, top, w * 1.1, d * 1.12, 0.3 + r() * 0.16)
   else box(b, f, top, w * 1.02, d * 1.02, 0.06, { roof: 'roof', windows: false })
-  if (r() < 0.45) box(b, { x: P(f, w * 0.5, -d * 0.3, 0)[0], z: P(f, w * 0.5, -d * 0.3, 0)[2], rot: f.rot }, top, 0.07, 0.07, 0.42, { roof: 'trim', windows: false })
+  if (r() < 0.45) {
+    const c = P(f, w * 0.5, -d * 0.3, 0)
+    box(b, { x: c[0], z: c[2], rot: f.rot }, top, 0.07, 0.07, 0.42, { roof: 'trim', windows: false })
+    b.chimneys.push({ x: c[0], y: top + 0.45, z: c[2] })
+  }
 }
 
 /** a lantern on a post: a small warm light after dark */

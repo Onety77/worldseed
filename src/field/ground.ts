@@ -211,9 +211,9 @@ const groundColor = glsl`
     // a challenge is a warning, a missed milestone is a failure: the ground shows the difference
     trouble = max(trouble, inside * uTrouble[i] * uTrouble[i]);
     // a soft ring of light around the world in focus, at the foot of its hill
-    halo = max(halo, exp(-pow((t - 1.1) / .035, 2.)) * m.z);
+    halo = max(halo, exp(-pow((t - 1.1) / .028, 2.)) * m.z);
     // after dark, a lived-in world lights the ground around its buildings
-    lamps += uGlow[i] * exp(-t * t * 9.) * (1. - m.w * .8);
+    lamps += uGlow[i] * exp(-t * t * 5.) * (1. - m.w * .8);
   }
 
   if (gh >= 0.) {
@@ -299,7 +299,7 @@ const groundColor = glsl`
   col *= 1. - cloud(gp, uT) * .16 * (1. - uNight);
   // focus: the world's hill brightens a little, and a ring of light stands at its foot
   col = mix(col, col * 1.06 + uSprout * .03, focus * .5);
-  glow += uSprout * halo * .3 * (1. - uNight * .3);
+  glow += uSprout * halo * .2 * (1. - uNight * .45);
   // muted by a filter: greyed and stepped back
   col = mix(col, vec3(dot(col, vec3(.3, .55, .15))) * .96, muted * .75);
 
@@ -315,7 +315,7 @@ const groundColor = glsl`
   }
 
   // night: warm light around lived-in worlds
-  glow += uLamp * min(lamps, 1.) * uNight * .012 * (gh >= 0. ? 1. : .4);
+  glow += uLamp * min(lamps, 1.) * uNight * .02 * (gh >= 0. ? 1. : .4);
 
   diffuseColor.rgb = col;
   vec3 gNormalView = normalize((viewMatrix * vec4(gn, 0.)).xyz);

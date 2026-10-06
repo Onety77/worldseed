@@ -2,8 +2,10 @@ import * as THREE from 'three'
 import { MAX_HILLS, heightAt, type Hill } from './height'
 import { Heightfield, makeGroundUniforms, makeOcean, makeTerrain, type GroundUniforms } from './ground'
 import { Sky } from './sky'
-import { WIND } from './nature'
+import { CLEARING, WIND } from './nature'
 import { GroundPaint } from './paint'
+import { buildIsland, revealBridge, type IslandParts } from './islands'
+import { Atmos } from './atmos'
 import { buildSettlement, disposeGroup, type SettlementInput } from './settlement'
 import { setLook, type Shared } from './kit'
 import { Life } from './life'
@@ -43,39 +45,6 @@ export interface Projected {
   visible: boolean
 }
 
-// the Field's two palettes: survey paper by day, ink-blue by night
-const DAY = {
-  paper: new THREE.Color('#eceee8'),
-  haze: new THREE.Color('#e4e8e3'),
-  valley: new THREE.Color('#d2d8cf'),
-  peak: new THREE.Color('#f7f8f3'),
-  ink: new THREE.Color('#141813'),
-  green: new THREE.Color('#3f6b00'),
-  water: new THREE.Color('#cddadb'),
-  red: new THREE.Color('#b8361c'),
-}
-const NIGHT = {
-  paper: new THREE.Color('#566874'),
-  haze: new THREE.Color('#0d1419'),
-  valley: new THREE.Color('#2b3a44'),
-  peak: new THREE.Color('#71858f'),
-  ink: new THREE.Color('#e4ece2'),
-  green: new THREE.Color('#c4ef3a'),
-  water: new THREE.Color('#0b151c'),
-  red: new THREE.Color('#ff8a6b'),
-}
-const PAL = {
-  paper: DAY.paper.clone(),
-  haze: DAY.haze.clone(),
-  valley: DAY.valley.clone(),
-  peak: DAY.peak.clone(),
-  ink: DAY.ink.clone(),
-  green: DAY.green.clone(),
-  water: DAY.water.clone(),
-  red: DAY.red.clone(),
-}
-const INK = PAL.ink
-
 interface Cam {
   tx: number
   tz: number
@@ -98,10 +67,12 @@ export class FieldEngine {
   private hfDirty = true
   private sky: Sky
   private paint = new GroundPaint()
-  private bridges = new THREE.Group()
+  private atmos: Atmos
   private towns = new THREE.Group()
   private lostListeners = new Set<() => void>()
   private settlements = new Map<string, { key: string; group: THREE.Group; rise: number }>()
+  /** sovereign worlds' bridges, lighthouses and piers */
+  private islands = new Map<string, { key: string; parts: IslandParts }>()
   /** a world being replayed: its hill follows the scrubber instead of its live shape */
   private replay: { id: string; height: number; radius: number; tiers: number; moat: number; build: number } | null = null
   /** uniforms every building shares: the night, the haze, the fog */
@@ -178,7 +149,8 @@ export class FieldEngine {
     this.ocean = makeOcean(this.gu)
     this.life = new Life(this.shared)
     this.life.budget = quality === 'high' ? 1500 : 650
-    this.scene.add(this.ocean, this.terrain, this.bridges, this.towns, this.life.group)
+    this.atmos = new Atmos(quality)
+    this.scene.add(this.ocean, this.terrain, this.towns, this.life.group, this.atmos.group)
     this.scene.fog = new THREE.Fog(this.sky.fogColor, 170, 560)
     this.bindInput()
     this.resize()
@@ -198,11 +170,9 @@ export class FieldEngine {
 
   private applyNight() {
     const k = this.night.k
-    for (const key of Object.keys(PAL) as (keyof typeof PAL)[]) PAL[key].copy(DAY[key]).lerp(NIGHT[key], k)
     this.sky.setNight(k)
     ;(this.scene.fog as THREE.Fog).color.copy(this.sky.fogColor)
     this.shared.uNight.value = k
-    this.bridges.children.forEach((l) => ((l as THREE.Line).material as THREE.LineDashedMaterial).color.copy(PAL.ink))
     this.district?.d.setNight(k)
   }
 
@@ -226,6 +196,9 @@ export class FieldEngine {
     }
     this.syncSettlements()
     const real = this.worlds.filter((w) => w.id !== 'draft')
+    // a plot being planted is cleared of trees
+    const draft = this.worlds.find((w) => w.id === 'draft')
+    CLEARING.uClear.value.set(draft?.hill.x ?? 0, draft?.hill.z ?? 0, (draft?.hill.radius ?? 0) + 1.6, draft ? 1 : 0)
     const lw = real.map((w) => ({ id: w.id, hill: w.hill, stage: (w.town.seed ? 'seed' : w.hill.moat > 0.5 ? 'sovereign' : 'realm') as 'seed' | 'realm' | 'sovereign' }))
     this.life.build(lw)
     this.paint.update(lw, this.life.roads(), real.map((w) => w.hill))
@@ -485,8 +458,13 @@ export class FieldEngine {
     this.hf.dispose()
     this.paint.dispose()
     this.settlements.forEach((st) => disposeGroup(st.group))
+    this.islands.forEach((isl) => {
+      disposeGroup(isl.parts.bridge)
+      disposeGroup(isl.parts.extras)
+    })
     this.district?.d.dispose()
     this.life.dispose()
+    this.atmos.dispose()
     this.renderer.dispose()
     this.canvas.remove()
   }
@@ -518,6 +496,31 @@ export class FieldEngine {
       setLook(group, rise, 0)
       this.towns.add(group)
       this.settlements.set(w.id, { key, group, rise: prev && prev.key.split(',').slice(4).join() === key.split(',').slice(4).join() ? prev.rise : prev ? 0.35 : 0 })
+    }
+    this.atmos?.setChimneys([...this.settlements.values()].flatMap((st) => (st.group.userData.chimneys as { x: number; y: number; z: number }[]) ?? []))
+    // islands: built for every world that has (or is earning) its own chain
+    for (const [id, isl] of this.islands) {
+      const w = this.worlds.find((x) => x.id === id)
+      if (w && w.hill.moat >= 0.5) continue
+      this.towns.remove(isl.parts.bridge, isl.parts.extras)
+      disposeGroup(isl.parts.bridge)
+      disposeGroup(isl.parts.extras)
+      this.islands.delete(id)
+    }
+    for (const w of this.worlds) {
+      if (w.hill.moat < 0.5) continue
+      const key = [r(w.hill.radius), r(w.hill.height), w.hill.tiers, w.town.template].join()
+      const prev = this.islands.get(w.id)
+      if (prev?.key === key) continue
+      if (prev) {
+        this.towns.remove(prev.parts.bridge, prev.parts.extras)
+        disposeGroup(prev.parts.bridge)
+        disposeGroup(prev.parts.extras)
+      }
+      const parts = buildIsland(w.id, w.town.template, w.hill, targets, this.shared)
+      this.towns.add(parts.bridge, parts.extras)
+      revealBridge(parts, 0)
+      this.islands.set(w.id, { key, parts })
     }
   }
 
@@ -659,6 +662,14 @@ export class FieldEngine {
       const e = 1 - Math.pow(1 - st.rise, 3)
       setLook(st.group, e, (1 - s.muted * 0.75) * (1 - replaced) * Math.min(1, st.rise * 3))
     }
+    // islands: the bridge is laid as the water opens; the lighthouse and pier come with it
+    for (const [id, isl] of this.islands) {
+      const s = this.shown.get(id)
+      if (!s) continue
+      const k = Math.min(1, Math.max(0, (s.moat - 0.3) / 0.6))
+      revealBridge(isl.parts, k)
+      setLook(isl.parts.extras, 1, Math.min(1, k * 1.5) * (1 - s.muted * 0.75))
+    }
     // inside a world: its district fades in over the plain settlement, and its agents walk
     if (this.district) {
       const want = this.view.kind === 'district' && this.view.id === this.district.input.id ? 1 : 0
@@ -675,6 +686,8 @@ export class FieldEngine {
     this.routesShown = this.reduced ? roadsWanted : lerp(this.routesShown, roadsWanted, 1 - Math.pow(0.05, dt))
     this.life.setLook(1, this.routesShown)
     if (!this.reduced && this.life.step(dt)) moving = true
+    // with reduced motion the air holds still, but is still drawn where it is
+    if (this.atmos.step(this.reduced ? 0 : dt, this.reduced ? 0 : (now - this.t0) / 1000, this.camera.position, this.night.k) && !this.reduced) moving = true
 
     this.pings = this.pings.filter((p) => now - p.at < (Math.abs(p.scale) > 1.2 ? 3600 : 2400))
     for (let i = 0; i < 8; i++) {
@@ -705,7 +718,6 @@ export class FieldEngine {
       this.hfDirty = false
     }
     this.sky.follow(c.tx, c.tz, c.dist, this.camera.position)
-    this.drawBridges()
     this.renderer.render(this.scene, this.camera)
 
     if (this.listeners.size) {
@@ -721,41 +733,6 @@ export class FieldEngine {
     }
 
     if (moving && !document.hidden) this.wake()
-  }
-
-  /** dashed bridges from each island back to the mainland it settles to */
-  private drawBridges() {
-    const hills = this.hills()
-    const islands = this.worlds.filter((w) => this.shown.get(w.id)!.moat > 0.3)
-    if (islands.length === this.bridges.children.length && !this.bridgesDirty()) return
-    this.bridges.clear()
-    for (const w of islands) {
-      const s = this.shown.get(w.id)!
-      // cross the moat toward the centre of the continent
-      const len = Math.hypot(w.hill.x, w.hill.z) || 1
-      const dir = { x: -w.hill.x / len, z: -w.hill.z / len }
-      const pts: THREE.Vector3[] = []
-      for (let i = 0; i <= 24; i++) {
-        const t = 0.75 + (i / 24) * 0.95
-        const x = w.hill.x + dir.x * s.radius * t
-        const z = w.hill.z + dir.z * s.radius * t
-        pts.push(new THREE.Vector3(x, Math.max(0.15, heightAt(x, z, hills) + 0.15), z))
-      }
-      const geo = new THREE.BufferGeometry().setFromPoints(pts)
-      const k = Math.min(1, (s.moat - 0.3) / 0.6)
-      const line = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: INK, dashSize: 0.6, gapSize: 0.45, transparent: true, opacity: 0.7 * Math.min(1, k * 1.5) }))
-      line.computeLineDistances()
-      // the bridge draws itself out from the island as the water opens
-      geo.setDrawRange(0, Math.max(2, Math.ceil(pts.length * k)))
-      this.bridges.add(line)
-    }
-  }
-
-  private bridgesDirty() {
-    return this.worlds.some((w) => {
-      const s = this.shown.get(w.id)!
-      return s.moat > 0.3 && Math.abs(s.moat - w.hill.moat) > 0.01
-    })
   }
 
   /** where a point on screen meets the ground, roughly (a plane just above sea level) */

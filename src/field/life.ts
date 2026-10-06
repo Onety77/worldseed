@@ -19,27 +19,6 @@ export interface LifeWorld {
   stage: 'seed' | 'realm' | 'sovereign'
 }
 
-const solidVS = /* glsl */ `
-attribute vec3 dcolor;
-attribute vec3 ncolor;
-uniform float uNight;
-varying vec3 vC;
-varying float vDist;
-void main() {
-  vC = mix(dcolor, ncolor, uNight);
-  vec4 mv = modelViewMatrix * vec4(position, 1.);
-  vDist = length(mv.xyz);
-  gl_Position = projectionMatrix * mv;
-}`
-const solidFS = /* glsl */ `
-uniform vec3 uHaze;
-uniform vec2 uFog;
-uniform float uOpacity;
-varying vec3 vC;
-varying float vDist;
-void main() {
-  gl_FragColor = vec4(mix(vC, uHaze, smoothstep(uFog.x, uFog.y, vDist)), uOpacity);
-}`
 const routeVS = /* glsl */ `
 attribute float ld;
 varying float vLd;
@@ -63,8 +42,6 @@ void main() {
   gl_FragColor = vec4(mix(c, uHaze, smoothstep(uFog.x, uFog.y, vDist)), uOpacity * mix(.38, .5, uNight));
 }`
 
-const HULL_DAY = new THREE.Color('#f7f6ef'), HULL_NIGHT = new THREE.Color('#5a6670')
-const SAIL_DAY = new THREE.Color('#ffffff'), SAIL_NIGHT = new THREE.Color('#9fb0b8')
 
 interface Route {
   a: string
@@ -78,7 +55,7 @@ export class Life {
   readonly nature = new Nature()
   /** how many trees and rocks to plant: fewer on modest devices */
   budget = 1400
-  private boats: { mesh: THREE.Mesh; cx: number; cz: number; r: number; a: number; speed: number; island: boolean }[] = []
+  private boats: { mesh: THREE.Group; cx: number; cz: number; r: number; a: number; speed: number; island: boolean }[] = []
   private routes: Route[] = []
   private routeLines: THREE.LineSegments | null = null
   private packets: THREE.Points
@@ -114,11 +91,17 @@ export class Life {
   }
 
   private clear() {
-    for (const o of [this.routeLines, ...this.boats.map((b) => b.mesh)]) {
-      if (!o) continue
-      this.group.remove(o)
-      o.geometry.dispose()
-      ;(o.material as THREE.Material).dispose()
+    if (this.routeLines) {
+      this.routeLines.geometry.dispose()
+      ;(this.routeLines.material as THREE.Material).dispose()
+    }
+    for (const b of this.boats) {
+      this.group.remove(b.mesh)
+      b.mesh.traverse((o) => {
+        const m = o as THREE.Mesh
+        m.geometry?.dispose()
+        ;(m.material as THREE.Material | undefined)?.dispose()
+      })
     }
     this.routeLines = null
     this.boats = []
@@ -126,43 +109,61 @@ export class Life {
     this.live = []
   }
 
-  private material() {
-    return new THREE.ShaderMaterial({ vertexShader: solidVS, fragmentShader: solidFS, uniforms: { ...this.shared, ...this.own }, transparent: true })
-  }
 
-  private boat(scale: number) {
-    // a hull and a sail, pointing along +x
-    const pos: number[] = [], day: number[] = [], night: number[] = []
-    const push = (p: number[], d: THREE.Color, n: THREE.Color) => {
-      pos.push(p[0] * scale, p[1] * scale, p[2] * scale)
-      day.push(d.r, d.g, d.b)
-      night.push(n.r, n.g, n.b)
+
+  /** a small lit boat pointing along +x: a sailboat or a fishing boat, with a soft wake behind it */
+  private boat(scale: number, kind: 'sail' | 'fish', hullColor: string) {
+    const group = new THREE.Group()
+    const lambert = (c: string) => new THREE.MeshLambertMaterial({ color: c })
+    // the hull: a pointed, tapering shape
+    const hs = new THREE.Shape()
+    hs.moveTo(-0.6, -0.26)
+    hs.lineTo(0.45, -0.24)
+    hs.quadraticCurveTo(0.95, 0, 0.45, 0.24)
+    hs.lineTo(-0.6, 0.26)
+    hs.closePath()
+    const hullGeo = new THREE.ExtrudeGeometry(hs, { depth: 0.22, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, 0.17, 0)
+    const hull = new THREE.Mesh(hullGeo, lambert(hullColor))
+    const deck = new THREE.Mesh(new THREE.ShapeGeometry(hs).rotateX(-Math.PI / 2).translate(0, 0.175, 0), lambert('#c9a57a'))
+    group.add(hull, deck)
+    if (kind === 'sail') {
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 1.25, 5).translate(0.05, 0.8, 0), lambert('#7a5b3d'))
+      const sail = new THREE.Mesh(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0.07, 0.3, 0), new THREE.Vector3(0.07, 1.35, 0), new THREE.Vector3(-0.5, 0.32, 0)]), lambert('#fbf8f0'))
+      sail.geometry.computeVertexNormals()
+      ;(sail.material as THREE.Material).side = THREE.DoubleSide
+      group.add(mast, sail)
+    } else {
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.24, 0.3).translate(-0.18, 0.3, 0), lambert('#f3efe6'))
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 0.34).translate(-0.18, 0.44, 0), lambert('#c8633f'))
+      group.add(cabin, roof)
     }
-    const hull = [[0.9, 0.12, 0], [-0.6, 0.12, 0.28], [-0.6, 0.12, -0.28], [-0.45, -0.05, 0]]
-    for (const [a, b, c] of [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]) for (const i of [a, b, c]) push(hull[i], HULL_DAY, HULL_NIGHT)
-    for (const p of [[-0.35, 0.12, 0], [0.35, 0.12, 0], [-0.25, 1.05, 0]]) push(p, SAIL_DAY, SAIL_NIGHT)
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-    g.setAttribute('dcolor', new THREE.Float32BufferAttribute(day, 3))
-    g.setAttribute('ncolor', new THREE.Float32BufferAttribute(night, 3))
-    const m = this.material()
-    m.side = THREE.DoubleSide
-    return new THREE.Mesh(g, m)
+    group.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) o.castShadow = true
+    })
+    // the wake: two pale streaks spreading out behind
+    const wake = new THREE.Mesh(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.5, 0.06, 0.12), new THREE.Vector3(-2.6, 0.06, 0.75), new THREE.Vector3(-2.4, 0.06, 0.5), new THREE.Vector3(-0.5, 0.06, -0.12), new THREE.Vector3(-2.4, 0.06, -0.5), new THREE.Vector3(-2.6, 0.06, -0.75)]),
+      new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.32, depthWrite: false }),
+    )
+    group.add(wake)
+    group.scale.setScalar(scale)
+    return group
   }
 
   private buildBoats(worlds: LifeWorld[], r: () => number) {
+    const hulls = ['#f3efe6', '#3f6f8f', '#b3483b', '#2f5a48', '#e4c770']
     for (const w of worlds.filter((x) => x.stage === 'sovereign')) {
       for (let i = 0; i < 2; i++) {
-        const mesh = this.boat(0.75)
+        const mesh = this.boat(0.62, i ? 'fish' : 'sail', hulls[(i * 3 + Math.floor(r() * 5)) % hulls.length])
         this.group.add(mesh)
-        this.boats.push({ mesh, cx: w.hill.x, cz: w.hill.z, r: w.hill.radius * 1.24, a: r() * Math.PI * 2, speed: (0.05 + r() * 0.04) * (i ? -1 : 1), island: true })
+        this.boats.push({ mesh, cx: w.hill.x, cz: w.hill.z, r: w.hill.radius * 1.26, a: r() * Math.PI * 2, speed: (0.05 + r() * 0.04) * (i ? -1 : 1), island: true })
       }
     }
-    // a few further out, sailing round the continent
-    for (let i = 0; i < 5; i++) {
-      const mesh = this.boat(1)
+    // more out at sea, sailing round the continent at different distances
+    for (let i = 0; i < 9; i++) {
+      const mesh = this.boat(0.85 + r() * 0.3, r() < 0.65 ? 'sail' : 'fish', hulls[i % hulls.length])
       this.group.add(mesh)
-      this.boats.push({ mesh, cx: 0, cz: 2, r: 54 + r() * 10, a: r() * Math.PI * 2, speed: (0.008 + r() * 0.006) * (i % 2 ? -1 : 1), island: false })
+      this.boats.push({ mesh, cx: 0, cz: 2, r: 53 + r() * 16, a: r() * Math.PI * 2, speed: (0.008 + r() * 0.006) * (i % 2 ? -1 : 1), island: false })
     }
   }
 
@@ -234,7 +235,8 @@ export class Life {
     for (const b of this.boats) {
       b.a += b.speed * dt
       const x = b.cx + Math.cos(b.a) * b.r, z = b.cz + Math.sin(b.a) * b.r
-      b.mesh.position.set(x, 0.02 + Math.sin(b.a * 7) * 0.03, z)
+      b.mesh.position.set(x, 0.0 + Math.sin(b.a * 7) * 0.03, z)
+      b.mesh.rotation.x = Math.sin(b.a * 9) * 0.05
       // face along the circle
       b.mesh.rotation.y = -b.a - (b.speed > 0 ? Math.PI / 2 : -Math.PI / 2)
     }
