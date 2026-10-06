@@ -48,7 +48,7 @@ export class District {
     this.hill = hill
     this.hills = hills
     const r = rand(seedOf(input.id + ':inside'))
-    const b = new Builder(r)
+    const b = new Builder(r, input.template)
     b.lit = 0.35 + input.lit * 0.55
     const g = (x: number, z: number) => heightAt(x, z, hills)
     const placed: { x: number; z: number; s: number }[] = []
@@ -68,7 +68,7 @@ export class District {
     for (const app of input.apps) {
       const site = find(0.12, 0.5, 1.45)
       if (!site) continue
-      const top = signature(input.template, b, g, site, true, r, 'roof')
+      const top = signature(input.template, b, g, site, true, r, 'brand')
       this.anchors.push({ key: app.key, kind: 'app', x: site.x, y: top, z: site.z })
     }
 

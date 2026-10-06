@@ -48,9 +48,10 @@ float hill(vec2 p, vec4 h, vec4 m) {
   float rr = h.z * (1. + .1 * sin(ang * 3. + h.x) + .06 * sin(ang * 5. + h.y * .7));
   float t = length(d) / max(rr, .001);
   float shape = smoothstep(0., 1., clamp(1. - t, 0., 1.));
-  float s = shape * m.x;
-  float terr = (floor(s) + smoothstep(.5, 1., fract(s))) / max(m.x, 1.);
-  float hh = mix(shape, terr, .72) * h.w;
+  // a flat summit plateau for the square and its landmark
+  float s = min(shape * m.x * 1.15, m.x);
+  float terr = (floor(s) + smoothstep(.66, 1., fract(s))) / max(m.x, 1.);
+  float hh = mix(shape, terr, .8) * h.w;
   float moat = m.y * exp(-pow((t - 1.24) / .17, 2.)) * 6.;
   return hh - moat;
 }
@@ -100,9 +101,9 @@ function hillAt(x: number, z: number, h: Hill) {
   const rr = h.radius * (1 + 0.1 * Math.sin(ang * 3 + h.x) + 0.06 * Math.sin(ang * 5 + h.z * 0.7))
   const t = Math.hypot(dx, dz) / Math.max(rr, 0.001)
   const shape = smooth(0, 1, Math.min(1, Math.max(0, 1 - t)))
-  const s = shape * h.tiers
-  const terr = (Math.floor(s) + smooth(0.5, 1, fract(s))) / Math.max(h.tiers, 1)
-  const hh = (shape + (terr - shape) * 0.72) * h.height
+  const s = Math.min(shape * h.tiers * 1.15, h.tiers)
+  const terr = (Math.floor(s) + smooth(0.66, 1, fract(s))) / Math.max(h.tiers, 1)
+  const hh = (shape + (terr - shape) * 0.8) * h.height
   const moat = h.moat * Math.exp(-(((t - 1.24) / 0.17) ** 2)) * 6
   return hh - moat
 }

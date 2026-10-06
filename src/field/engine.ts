@@ -1,5 +1,9 @@
 import * as THREE from 'three'
-import { CONTOUR, GLSL, INDEX_EVERY, MAX_HILLS, heightAt, type Hill } from './height'
+import { MAX_HILLS, heightAt, type Hill } from './height'
+import { Heightfield, makeGroundUniforms, makeOcean, makeTerrain, type GroundUniforms } from './ground'
+import { Sky } from './sky'
+import { WIND } from './nature'
+import { GroundPaint } from './paint'
 import { buildSettlement, disposeGroup, type SettlementInput } from './settlement'
 import { setLook, type Shared } from './kit'
 import { Life } from './life'
@@ -60,7 +64,6 @@ const NIGHT = {
   water: new THREE.Color('#0b151c'),
   red: new THREE.Color('#ff8a6b'),
 }
-const SPROUT = new THREE.Color('#c4ef3a')
 const PAL = {
   paper: DAY.paper.clone(),
   haze: DAY.haze.clone(),
@@ -71,181 +74,7 @@ const PAL = {
   water: DAY.water.clone(),
   red: DAY.red.clone(),
 }
-const PAPER = PAL.paper, HAZE = PAL.haze, VALLEY = PAL.valley, PEAK = PAL.peak, INK = PAL.ink, GREEN = PAL.green, WATER = PAL.water
-
-const terrainVS = (hq: boolean) => /* glsl */ `
-${GLSL}
-uniform vec4 uHill[${MAX_HILLS}];
-uniform vec4 uMeta[${MAX_HILLS}];
-uniform int uCount;
-varying float vH;
-varying vec3 vN;
-varying vec2 vP;
-varying float vDist;
-float H(vec2 p) {
-  float y = continent(p);
-  for (int i = 0; i < ${MAX_HILLS}; i++) {
-    if (i >= uCount) break;
-    y += hill(p, uHill[i], uMeta[i]);
-  }
-  return y;
-}
-void main() {
-  vec2 p = position.xz;
-  float h = H(p);
-  float e = .35;
-  ${hq ? 'vec3 n = normalize(vec3(H(p - vec2(e, 0.)) - H(p + vec2(e, 0.)), 2. * e, H(p - vec2(0., e)) - H(p + vec2(0., e))));' : 'vec3 n = normalize(vec3(h - H(p + vec2(e, 0.)), e, h - H(p + vec2(0., e))));'}
-  vH = h;
-  vN = n;
-  vP = p;
-  vec4 mv = modelViewMatrix * vec4(p.x, max(h, 0.), p.y, 1.);
-  vDist = length(mv.xyz);
-  gl_Position = projectionMatrix * mv;
-}`
-
-const terrainFS = (hq: boolean) => /* glsl */ `
-${hq ? GLSL : ''}
-uniform vec3 uPaper, uValley, uPeak, uInk, uSprout, uGreen, uWater, uHaze;
-uniform float uT;
-uniform float uNight;
-uniform float uGlow[${MAX_HILLS}];
-uniform float uTrouble[${MAX_HILLS}];
-uniform vec3 uRed;
-uniform vec4 uHill[${MAX_HILLS}];
-uniform vec4 uMeta[${MAX_HILLS}];
-uniform int uCount;
-uniform vec4 uPing[8];
-uniform vec2 uFog;
-varying float vH;
-varying vec3 vN;
-varying vec2 vP;
-varying float vDist;
-float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float vn(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3. - 2. * f);
-  return mix(mix(h2(i), h2(i + vec2(1., 0.)), u.x), mix(h2(i + vec2(0., 1.)), h2(i + 1.), u.x), u.y);
-}
-// soft cloud shadows drifting slowly across the Field by day
-float cloud(vec2 p, float t) {
-  return smoothstep(.56, .86, vn(p * .045 + t * vec2(.05, .02)) * .65 + vn(p * .11 - t * vec2(.03, .04)) * .35);
-}
-float lineAt(float v, float width) {
-  float w = max(fwidth(v), 1e-4);
-  return 1. - smoothstep(0., w * width, abs(fract(v - .5) - .5));
-}
-void main() {
-  // on capable screens the height is recomputed per pixel so contours stay smooth curves
-  float hgt = vH;
-  ${hq ? `hgt = continent(vP);
-  for (int i = 0; i < ${MAX_HILLS}; i++) { if (i >= uCount) break; hgt += hill(vP, uHill[i], uMeta[i]); }` : ''}
-  vec3 l = normalize(vec3(-.45, .85, .35));
-  float lit = clamp(dot(normalize(vN), l), 0., 1.);
-  vec3 col = mix(uValley, uPaper, smoothstep(.35, .95, lit));
-  col = mix(col, uPeak, smoothstep(2., 9., hgt) * .6);
-
-  float c = lineAt(hgt / ${CONTOUR.toFixed(2)}, 1.);
-  float idx = lineAt(hgt / ${(CONTOUR * INDEX_EVERY).toFixed(2)}, 1.5);
-  float coast = 1. - smoothstep(0., max(fwidth(hgt), 1e-4) * 2., abs(hgt));
-  float land = step(0., hgt);
-  float ink = (.17 * c + .3 * idx) * land + .62 * coast;
-
-  // below sea level: water, with cartographic waterlines that echo the coast and fade offshore
-  float depth = max(-hgt, 0.);
-  float wl = lineAt(depth / .42, .9) * (1. - smoothstep(.2, 2.4, depth)) * step(.08, depth);
-  float hv = (vP.y + sin(vP.x * .08 + uT * .15) * .35) / 1.1;
-  float hatch = lineAt(hv, .7) * .07 * (1. - smoothstep(.25, .6, fwidth(hv)));
-  vec3 sea = mix(uWater, uWater * .96, smoothstep(0., 3., depth));
-  sea = mix(sea, uInk, wl * .26 + hatch);
-  col = mix(sea, col, land);
-
-  // worlds: a focused one fills with sprout and its contours turn green; muted ones fade
-  float green = 0.;
-  float muted = 0.;
-  float glow = 0.;
-  float trouble = 0.;
-  for (int i = 0; i < ${MAX_HILLS}; i++) {
-    if (i >= uCount) break;
-    vec4 h = uHill[i];
-    vec4 m = uMeta[i];
-    float t = length(vP - h.xy) / max(h.z, .001);
-    float inside = 1. - smoothstep(.92, 1.08, t);
-    green = max(green, inside * m.z);
-    muted = max(muted, inside * m.w);
-    // after dark, a busy town lights the ground around it
-    glow += uGlow[i] * exp(-t * t * 1.6) * (1. - m.w * .8);
-    trouble = max(trouble, inside * uTrouble[i]);
-  }
-  col = mix(col, uSprout, green * .24 * (1. - uNight * .55));
-  col += vec3(1., .86, .62) * min(glow, 1.) * uNight * .1;
-  col *= 1. - cloud(vP, uT) * .075 * (1. - uNight);
-  // a world in trouble: its terraces go grey and dim
-  col = mix(col, vec3(dot(col, vec3(.333))) * .9, trouble * .55);
-  ink *= 1. - muted * .55;
-
-  // evidence pings: a ring of green runs out from the world that published it
-  // (a negative scale is bad news: the ring runs red)
-  float ring = 0.;
-  float bad = 0.;
-  for (int i = 0; i < 8; i++) {
-    vec4 pg = uPing[i];
-    if (pg.w == 0.) continue;
-    float sc = abs(pg.w);
-    float d = length(vP - pg.xy);
-    float r = pg.z * 7. * sc;
-    float v = exp(-pow((d - r) / (.4 * sc), 2.)) * smoothstep(.08, .3, pg.z) * (1. - smoothstep(.4, 1.7 + (sc - 1.) * .4, pg.z));
-    if (pg.w < 0.) bad = max(bad, v);
-    else ring = max(ring, v);
-  }
-
-  vec3 lineCol = mix(uInk, uGreen, max(green, ring));
-  lineCol = mix(lineCol, uRed, max(bad, trouble * .5));
-  col = mix(col, uSprout, ring * .5);
-  col = mix(col, uRed, bad * .25);
-  col = mix(col, lineCol, clamp(ink + (ring + bad) * .35, 0., 1.));
-  float fog = smoothstep(uFog.x, uFog.y, vDist);
-  gl_FragColor = vec4(mix(col, uHaze, fog), 1.);
-}`
-
-const waterVS = /* glsl */ `
-varying vec2 vP;
-varying vec3 vView;
-void main() {
-  vec4 world = modelMatrix * vec4(position, 1.);
-  vP = world.xz;
-  vec4 mv = viewMatrix * world;
-  vView = mv.xyz;
-  gl_Position = projectionMatrix * mv;
-}`
-
-const waterFS = /* glsl */ `
-uniform vec3 uWater, uInk, uHaze;
-uniform vec2 uFog;
-uniform float uT;
-uniform float uNight;
-varying vec2 vP;
-varying vec3 vView;
-float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float vn(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3. - 2. * f);
-  return mix(mix(h2(i), h2(i + vec2(1., 0.)), u.x), mix(h2(i + vec2(0., 1.)), h2(i + 1.), u.x), u.y);
-}
-// soft cloud shadows drifting slowly across the Field by day
-float cloud(vec2 p, float t) {
-  return smoothstep(.56, .86, vn(p * .045 + t * vec2(.05, .02)) * .65 + vn(p * .11 - t * vec2(.03, .04)) * .35);
-}
-void main() {
-  float vDist = length(vView);
-  // cartographic water: fine horizontal hatching that drifts very slowly
-  float v = (vP.y + sin(vP.x * .08 + uT * .15) * .35) / 1.1;
-  float fw = max(fwidth(v), 1e-4);
-  float line = (1. - smoothstep(0., fw * .7, abs(fract(v - .5) - .5))) * (1. - smoothstep(.25, .6, fw));
-  vec3 col = mix(uWater * .96, uInk, line * .07);
-  col *= 1. - cloud(vP, uT) * .06 * (1. - uNight);
-  float fog = smoothstep(uFog.x, uFog.y, vDist);
-  gl_FragColor = vec4(mix(col, uHaze, fog), 1.);
-}`
+const INK = PAL.ink
 
 interface Cam {
   tx: number
@@ -262,8 +91,13 @@ export class FieldEngine {
   private renderer: THREE.WebGLRenderer
   private scene = new THREE.Scene()
   private camera = new THREE.PerspectiveCamera(32, 1, 1, 900)
-  private terrain: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>
-  private water: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>
+  private terrain: THREE.Mesh
+  private ocean: THREE.Mesh
+  private gu: GroundUniforms
+  private hf: Heightfield
+  private hfDirty = true
+  private sky: Sky
+  private paint = new GroundPaint()
   private bridges = new THREE.Group()
   private towns = new THREE.Group()
   private lostListeners = new Set<() => void>()
@@ -316,7 +150,6 @@ export class FieldEngine {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: quality === 'high' ? 'high-performance' : 'default' })
     // phones have dense screens; 1.5x is sharp enough for ink lines and halves the pixel work of 3x
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality === 'high' ? 1.75 : 1.5))
-    this.renderer.setClearColor(HAZE)
     this.canvas = this.renderer.domElement
     this.canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none'
     container.appendChild(this.canvas)
@@ -329,50 +162,24 @@ export class FieldEngine {
       this.lostListeners.forEach((f) => f())
     })
 
-    const common = {
-      uPaper: { value: PAPER },
-      uInk: { value: INK },
-      uFog: { value: new THREE.Vector2(130, 330) },
-      uHaze: { value: HAZE },
-      uWater: { value: WATER },
-      uT: { value: 0 },
-    }
-    this.shared = { uNight: { value: 0 }, uHaze: common.uHaze, uFog: common.uFog }
-    const seg = quality === 'high' ? 360 : 180
-    const geo = new THREE.PlaneGeometry(200, 200, seg, seg)
-    geo.rotateX(-Math.PI / 2)
-    this.terrain = new THREE.Mesh(
-      geo,
-      new THREE.ShaderMaterial({
-        vertexShader: terrainVS(quality === 'high'),
-        fragmentShader: terrainFS(quality === 'high'),
-        uniforms: {
-          ...common,
-          uValley: { value: VALLEY },
-          uPeak: { value: PEAK },
-          uSprout: { value: SPROUT },
-          uGreen: { value: GREEN },
-          uHill: { value: Array.from({ length: MAX_HILLS }, () => new THREE.Vector4()) },
-          uMeta: { value: Array.from({ length: MAX_HILLS }, () => new THREE.Vector4()) },
-          uCount: { value: 0 },
-          uPing: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) },
-          uGlow: { value: new Array(MAX_HILLS).fill(0) },
-          uTrouble: { value: new Array(MAX_HILLS).fill(0) },
-          uRed: { value: PAL.red },
-          uNight: this.shared.uNight,
-        },
-      }),
-    )
-    const wgeo = new THREE.PlaneGeometry(900, 900, 1, 1)
-    wgeo.rotateX(-Math.PI / 2)
-    this.water = new THREE.Mesh(
-      wgeo,
-      new THREE.ShaderMaterial({ vertexShader: waterVS, fragmentShader: waterFS, uniforms: { ...common, uNight: this.shared.uNight } }),
-    )
-    this.water.position.y = -0.05
+    this.renderer.shadowMap.enabled = true
+    this.renderer.shadowMap.type = THREE.PCFShadowMap
+
+    this.sky = new Sky(this.scene, quality === 'high' ? 2048 : 1024)
+    this.shared = { uNight: { value: 0 }, uHaze: { value: this.sky.fogColor }, uFog: { value: new THREE.Vector2(170, 560) } }
+    const base = makeGroundUniforms()
+    this.hf = new Heightfield(this.renderer, quality === 'high' ? 1024 : 512, base)
+    this.gu = { ...base, uHF: { value: this.hf.texture }, uTexel: { value: 1 / this.hf.size }, uPaint: { value: this.paint.texture } }
+    this.gu.uNight = this.shared.uNight
+    this.gu.uSunDir.value.copy(this.sky.dir)
+    this.terrain = makeTerrain(this.gu, quality === 'high' ? 360 : 200)
+    // hills cast their own shadows across the land (on capable screens)
+    this.terrain.castShadow = quality === 'high'
+    this.ocean = makeOcean(this.gu)
     this.life = new Life(this.shared)
-    this.scene.add(this.water, this.terrain, this.bridges, this.towns, this.life.group)
-    this.scene.fog = new THREE.Fog(HAZE, 130, 330)
+    this.life.budget = quality === 'high' ? 1500 : 650
+    this.scene.add(this.ocean, this.terrain, this.bridges, this.towns, this.life.group)
+    this.scene.fog = new THREE.Fog(this.sky.fogColor, 170, 560)
     this.bindInput()
     this.resize()
   }
@@ -392,8 +199,8 @@ export class FieldEngine {
   private applyNight() {
     const k = this.night.k
     for (const key of Object.keys(PAL) as (keyof typeof PAL)[]) PAL[key].copy(DAY[key]).lerp(NIGHT[key], k)
-    this.renderer.setClearColor(PAL.haze)
-    ;(this.scene.fog as THREE.Fog).color.copy(PAL.haze)
+    this.sky.setNight(k)
+    ;(this.scene.fog as THREE.Fog).color.copy(this.sky.fogColor)
     this.shared.uNight.value = k
     this.bridges.children.forEach((l) => ((l as THREE.Line).material as THREE.LineDashedMaterial).color.copy(PAL.ink))
     this.district?.d.setNight(k)
@@ -419,7 +226,9 @@ export class FieldEngine {
     }
     this.syncSettlements()
     const real = this.worlds.filter((w) => w.id !== 'draft')
-    this.life.build(real.map((w) => ({ id: w.id, hill: w.hill, stage: w.town.seed ? 'seed' : w.hill.moat > 0.5 ? 'sovereign' : 'realm' })))
+    const lw = real.map((w) => ({ id: w.id, hill: w.hill, stage: (w.town.seed ? 'seed' : w.hill.moat > 0.5 ? 'sovereign' : 'realm') as 'seed' | 'realm' | 'sovereign' }))
+    this.life.build(lw)
+    this.paint.update(lw, this.life.roads(), real.map((w) => w.hill))
     this.wake()
   }
 
@@ -669,10 +478,12 @@ export class FieldEngine {
 
   dispose() {
     cancelAnimationFrame(this.raf)
-    this.terrain.geometry.dispose()
-    this.terrain.material.dispose()
-    this.water.geometry.dispose()
-    this.water.material.dispose()
+    for (const m of [this.terrain, this.ocean]) {
+      m.geometry.dispose()
+      ;(m.material as THREE.Material).dispose()
+    }
+    this.hf.dispose()
+    this.paint.dispose()
     this.settlements.forEach((st) => disposeGroup(st.group))
     this.district?.d.dispose()
     this.life.dispose()
@@ -788,8 +599,12 @@ export class FieldEngine {
         // settle exactly on the target, so what waits on "fully grown" gets there
         if (Math.abs(next - target[key]) > 0.002) {
           moving = true
+          if (s[key] !== next && key !== 'green' && key !== 'muted' && key !== 'trouble') this.hfDirty = true
           s[key] = next
-        } else s[key] = target[key]
+        } else {
+          if (s[key] !== target[key] && key !== 'green' && key !== 'muted' && key !== 'trouble') this.hfDirty = true
+          s[key] = target[key]
+        }
       }
     })
 
@@ -802,7 +617,8 @@ export class FieldEngine {
     }
 
     // uniforms
-    const u = this.terrain.material.uniforms
+    const u = this.gu
+    if (u.uCount.value !== this.worlds.length) this.hfDirty = true
     u.uCount.value = this.worlds.length
     this.worlds.forEach((w, i) => {
       const s = this.shown.get(w.id)!
@@ -867,8 +683,8 @@ export class FieldEngine {
       else u.uPing.value[i].set(0, 0, 0, 0)
     }
     if (this.pings.length) moving = true
-    this.water.material.uniforms.uT.value = (now - this.t0) / 1000
-    u.uT.value = this.water.material.uniforms.uT.value
+    u.uT.value = (now - this.t0) / 1000
+    WIND.uT.value = u.uT.value
 
     if (driftOnly && this.quality === 'low' && !this.pings.length && now - this.lastRender < 30) {
       if (!document.hidden) this.wake()
@@ -884,6 +700,11 @@ export class FieldEngine {
     this.camera.lookAt(target)
     this.camera.updateMatrixWorld()
 
+    if (this.hfDirty) {
+      this.hf.update(this.renderer, this.hills())
+      this.hfDirty = false
+    }
+    this.sky.follow(c.tx, c.tz, c.dist, this.camera.position)
     this.drawBridges()
     this.renderer.render(this.scene, this.camera)
 

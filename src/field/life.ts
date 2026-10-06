@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { continent, heightAt, type Hill } from './height'
+import { heightAt, type Hill } from './height'
+import { Nature } from './nature'
 import { rand } from './settlement'
 import type { Shared } from './kit'
 
@@ -62,9 +63,6 @@ void main() {
   gl_FragColor = vec4(mix(c, uHaze, smoothstep(uFog.x, uFog.y, vDist)), uOpacity * mix(.38, .5, uNight));
 }`
 
-const LEAF_DAY = [new THREE.Color('#e2e8d6'), new THREE.Color('#d4dcc6')]
-const LEAF_NIGHT = [new THREE.Color('#33433a'), new THREE.Color('#2a372f')]
-const TRUNK_DAY = new THREE.Color('#9a9585'), TRUNK_NIGHT = new THREE.Color('#1a1f1d')
 const HULL_DAY = new THREE.Color('#f7f6ef'), HULL_NIGHT = new THREE.Color('#5a6670')
 const SAIL_DAY = new THREE.Color('#ffffff'), SAIL_NIGHT = new THREE.Color('#9fb0b8')
 
@@ -77,7 +75,9 @@ interface Route {
 
 export class Life {
   readonly group = new THREE.Group()
-  private trees: THREE.Mesh | null = null
+  readonly nature = new Nature()
+  /** how many trees and rocks to plant: fewer on modest devices */
+  budget = 1400
   private boats: { mesh: THREE.Mesh; cx: number; cz: number; r: number; a: number; speed: number; island: boolean }[] = []
   private routes: Route[] = []
   private routeLines: THREE.LineSegments | null = null
@@ -94,7 +94,7 @@ export class Life {
     pg.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(24 * 3), 3))
     this.packets = new THREE.Points(pg, new THREE.PointsMaterial({ color: '#5c8f00', size: 1.5, sizeAttenuation: true, transparent: true, depthWrite: false }))
     this.packets.frustumCulled = false
-    this.group.add(this.packets)
+    this.group.add(this.packets, this.nature.group)
   }
 
   /** (re)build woods, boats and routes for this set of worlds */
@@ -105,19 +105,21 @@ export class Life {
     this.clear()
     const hills = worlds.map((w) => w.hill)
     const r = rand(9173)
-    this.buildTrees(worlds, hills, r)
-    this.buildBoats(worlds, r)
     this.buildRoutes(worlds, hills)
+    // keep woods off the roads: mark the cells the roads pass through
+    const road = new Set<string>()
+    for (const rt of this.routes) for (const p of rt.pts) for (const dx of [-1, 0, 1]) for (const dz of [-1, 0, 1]) road.add(`${Math.round(p.x) + dx},${Math.round(p.z) + dz}`)
+    this.nature.build(worlds, hills, (x, z) => road.has(`${Math.round(x)},${Math.round(z)}`), this.budget)
+    this.buildBoats(worlds, r)
   }
 
   private clear() {
-    for (const o of [this.trees, this.routeLines, ...this.boats.map((b) => b.mesh)]) {
+    for (const o of [this.routeLines, ...this.boats.map((b) => b.mesh)]) {
       if (!o) continue
       this.group.remove(o)
       o.geometry.dispose()
       ;(o.material as THREE.Material).dispose()
     }
-    this.trees = null
     this.routeLines = null
     this.boats = []
     this.routes = []
@@ -126,53 +128,6 @@ export class Life {
 
   private material() {
     return new THREE.ShaderMaterial({ vertexShader: solidVS, fragmentShader: solidFS, uniforms: { ...this.shared, ...this.own }, transparent: true })
-  }
-
-  private buildTrees(worlds: LifeWorld[], hills: Hill[], r: () => number) {
-    const pos: number[] = [], day: number[] = [], night: number[] = []
-    const push = (p: number[], d: THREE.Color, n: THREE.Color) => {
-      pos.push(...p)
-      day.push(d.r, d.g, d.b)
-      night.push(n.r, n.g, n.b)
-    }
-    let placed = 0
-    for (let i = 0; i < 2600 && placed < 320; i++) {
-      const x = (r() - 0.5) * 96, z = (r() - 0.5) * 92
-      const land = continent(x, z)
-      if (land < 0.9) continue
-      // woods grow in clusters, on the open land between worlds
-      const cluster = Math.sin(x * 0.21 + 1.3) * Math.cos(z * 0.17 - 0.4) + Math.sin(x * 0.07 - z * 0.09) * 0.6
-      if (cluster < 0.35) continue
-      if (worlds.some((w) => Math.hypot(w.hill.x - x, w.hill.z - z) < w.hill.radius + 1.6)) continue
-      const y = heightAt(x, z, hills) - 0.05
-      const s = 0.42 + r() * 0.35
-      const h = s * (2.1 + r() * 0.8)
-      const tone = r() < 0.5 ? 0 : 1
-      const n = 5
-      const a0 = r() * Math.PI
-      // a cone of leaves on a short trunk
-      for (let k = 0; k < n; k++) {
-        const a = a0 + (k / n) * Math.PI * 2, b = a0 + ((k + 1) / n) * Math.PI * 2
-        const lit = 0.9 + 0.1 * Math.cos(a - 2.2)
-        const d = LEAF_DAY[tone].clone().multiplyScalar(lit), nn = LEAF_NIGHT[tone].clone().multiplyScalar(lit)
-        push([x + Math.cos(a) * s, y + h * 0.28, z + Math.sin(a) * s], d, nn)
-        push([x + Math.cos(b) * s, y + h * 0.28, z + Math.sin(b) * s], d, nn)
-        push([x, y + h, z], d, nn)
-      }
-      const t = 0.07
-      push([x - t, y, z], TRUNK_DAY, TRUNK_NIGHT)
-      push([x + t, y, z], TRUNK_DAY, TRUNK_NIGHT)
-      push([x, y + h * 0.3, z], TRUNK_DAY, TRUNK_NIGHT)
-      placed++
-    }
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-    g.setAttribute('dcolor', new THREE.Float32BufferAttribute(day, 3))
-    g.setAttribute('ncolor', new THREE.Float32BufferAttribute(night, 3))
-    const m = this.material()
-    m.side = THREE.DoubleSide
-    this.trees = new THREE.Mesh(g, m)
-    this.group.add(this.trees)
   }
 
   private boat(scale: number) {
@@ -231,7 +186,8 @@ export class Life {
         for (let i = 0; i <= 40; i++) {
           const t = i / 40
           // leave and arrive at each hill's foot, bowing gently between
-          const s = a.hill.radius / d + t * (1 - (a.hill.radius + b.hill.radius) / d)
+          // from the ring road at one world's foot to the ring road at the other's
+          const s = (a.hill.radius * 1.05) / d + t * (1 - ((a.hill.radius + b.hill.radius) * 1.05) / d)
           const x = a.hill.x + dx * s + nx * Math.sin(s * Math.PI) * bow
           const z = a.hill.z + dz * s + nz * Math.sin(s * Math.PI) * bow
           pts.push(new THREE.Vector3(x, Math.max(0.12, heightAt(x, z, hills)) + 0.18, z))
@@ -256,7 +212,12 @@ export class Life {
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
     g.setAttribute('ld', new THREE.Float32BufferAttribute(ld, 1))
     this.routeLines = new THREE.LineSegments(g, new THREE.ShaderMaterial({ vertexShader: routeVS, fragmentShader: routeFS, uniforms: { ...this.shared, ...this.routeOwn }, transparent: true, depthWrite: false }))
-    this.group.add(this.routeLines)
+    // the roads themselves are painted on the ground; these lines are kept only for the packets' path
+  }
+
+  /** the roads, for painting on the ground */
+  roads() {
+    return this.routes.map((r) => ({ a: r.a, b: r.b, pts: r.pts }))
   }
 
   /** something happened at this world: send packets down its roads */
@@ -301,6 +262,7 @@ export class Life {
     const night = (this.shared.uNight.value as number) ?? 0
     ;(this.packets.material as THREE.PointsMaterial).color.set('#5c8f00').lerp(new THREE.Color('#c4ef3a'), night)
     this.own.uOpacity.value = opacity
+    this.nature.setOpacity(opacity)
     this.routeOwn.uOpacity.value = routes
     if (this.routeLines) this.routeLines.visible = routes > 0.01
     ;(this.packets.material as THREE.PointsMaterial).opacity = routes
@@ -309,6 +271,7 @@ export class Life {
 
   dispose() {
     this.clear()
+    this.nature.dispose()
     this.packets.geometry.dispose()
     ;(this.packets.material as THREE.Material).dispose()
   }
