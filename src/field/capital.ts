@@ -43,6 +43,8 @@ export interface Place {
 export interface Pt {
   x: number
   z: number
+  /** the height of the way here, if not the city's ground */
+  y?: number
 }
 
 export interface CapitalCtx {
@@ -69,6 +71,8 @@ export interface Capital {
   pulse: { x: number; z: number; sides: number; rot: number }
   /** the way a walker takes from one place to another */
   route(a: Pt, b: Pt, i: number): Pt[]
+  /** a published proof, shown the capital's own way instead of the ring */
+  flash?(): void
   /** anything that moves on its own (boats, sails); true while it is moving */
   step?(dt: number, t: number, still: boolean): boolean
   setNight?(k: number): void
@@ -99,6 +103,8 @@ export interface Plan {
   shape: THREE.DataTexture
   /** a tint over the ground: colour, and how much of it */
   paint: THREE.CanvasTexture
+  /** the height of standing water: ground below it, where water is allowed, is under water */
+  level?: number
 }
 
 export interface Pens {

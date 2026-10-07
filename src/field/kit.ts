@@ -404,6 +404,16 @@ export function pyramid(b: Builder, f: Frame, y: number, w: number, d: number, h
   }
 }
 
+/** a cone: a turret's cap */
+export function cone(b: Builder, x: number, z: number, y: number, r: number, h: number, tone: Tone) {
+  const n = 8
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2
+    b.tri([x + Math.cos(a0) * r, y, z + Math.sin(a0) * r], [x + Math.cos(a1) * r, y, z + Math.sin(a1) * r], [x, y + h, z], tone)
+  }
+  b.edge([x, y + h, z], [x, y + h + 0.18, z])
+}
+
 /** a pennant on a pole, in the world's roof colour */
 function flagpole(b: Builder, x: number, z: number, y0: number, h: number) {
   b.edge([x, y0, z], [x, y0 + h, z])

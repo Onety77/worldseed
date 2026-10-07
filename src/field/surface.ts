@@ -5,6 +5,7 @@ import { NOISE, type Style } from './cosmos'
 import type { Capital, CapitalCtx, Place, Plan, Pt, SurfaceInput } from './capital'
 import { classic } from './capitals/classic'
 import { lattice } from './capitals/lattice'
+import { quorum } from './capitals/quorum'
 
 /*
   Standing on a planet: what you find when you land on a world that earned its own chain.
@@ -117,7 +118,9 @@ function groundMaterial(style: Style, map: THREE.Texture, mask: THREE.Texture, u
       uPlanPaint: { value: plan?.paint ?? BLANK },
       uPlanHalf: { value: plan?.half ?? 1 },
       uPlanOn: { value: plan ? 1 : 0 },
-      uWater: { value: C(style.shallow).lerp(C(style.deep), 0.55) },
+      uWater: { value: C(style.shallow).lerp(C('#bfe3e0'), 0.12) },
+      uDeep: { value: C(style.deep).lerp(C(style.shallow), 0.25) },
+      uLevel: { value: plan?.level ?? -0.62 },
       uStation: { value: station ? 1 : 0 },
       uSeed: { value: seed },
       uLava: { value: style.lava ? 1 : 0 },
@@ -127,7 +130,7 @@ function groundMaterial(style: Style, map: THREE.Texture, mask: THREE.Texture, u
       uNight: u.uNight,
       uT: u.uT,
     })
-    const pars = `uniform sampler2D uMap, uMask, uPlanShape, uPlanPaint;\nuniform vec3 uLow, uMid, uField, uWater;\nuniform float uR, uCity, uStation, uSeed, uLava, uNight, uT, uPlanHalf, uPlanOn;\nvarying vec3 vPP;\nvarying vec2 vXZ;\nvarying float vFlat;\n${NOISE}\n${equirect}\n${planFn}`
+    const pars = `uniform sampler2D uMap, uMask, uPlanShape, uPlanPaint;\nuniform vec3 uLow, uMid, uField, uWater, uDeep;\nuniform float uR, uCity, uStation, uSeed, uLava, uNight, uT, uPlanHalf, uPlanOn, uLevel;\nvarying vec3 vPP;\nvarying vec2 vXZ;\nvarying float vY;\nvarying float vFlat;\n${NOISE}\n${equirect}\n${planFn}`
     const groundFn = glsl`
     vec3 ground(vec3 d) {
       vec3 pp = vec3(d.x, -d.z, d.y);
@@ -162,6 +165,7 @@ function groundMaterial(style: Style, map: THREE.Texture, mask: THREE.Texture, u
       vNormal = normalize(normalMatrix * nrm);
       vPP = pp;
       vXZ = transformed.xz;
+      vY = transformed.y;
       vFlat = (1. - smoothstep(uCity, uCity + 11., length(transformed.xz))) * (1. - uStation) * step(0., d.y);`,
     )
     sh.fragmentShader = sh.fragmentShader
@@ -187,19 +191,33 @@ function groundMaterial(style: Style, map: THREE.Texture, mask: THREE.Texture, u
         float pin = planIn(pu);
         vec4 pc = texture2D(uPlanPaint, pu);
         col = mix(col, pc.rgb, pc.a * pin);
-        float pw = smoothstep(.35, .65, texture2D(uPlanShape, pu).g) * pin;
-        vec3 water = uWater * (.9 + .1 * snoise(vec3(vXZ * .7, uT * .12))) * (1. - uNight * .35);
+        // water lies wherever the ground is below the plan's water level: a crisp waterline,
+        // light over the shallows and darker as it deepens
+        float under = uLevel - vY;
+        float fw = max(fwidth(vY), .002);
+        float pw = smoothstep(.35, .65, texture2D(uPlanShape, pu).g) * pin * smoothstep(-fw, fw, under);
+        vec3 water = mix(uWater, uDeep, smoothstep(0., 1.1, under));
+        // fine ripples, longer one way than the other, never patches
+        water *= (.96 + .04 * snoise(vec3(vXZ.x * 1.4, vXZ.y * 4.5, uT * .25))) * mix(1., .55, uNight);
+        // a thin bright line where it meets the shore
+        water = mix(water, uWater * 1.35 + .05, (1. - smoothstep(0., .05, under)) * .5 * (1. - uNight * .8));
         col = mix(col, water, pw);
         diffuseColor.rgb = col;`,
+      )
+      .replace(
+        '#include <normal_fragment_maps>',
+        glsl`#include <normal_fragment_maps>
+        // the water's surface is level, whatever the ground below it does
+        normal = normalize(mix(normal, normalize(mat3(viewMatrix) * vec3(0., 1., 0.)), pw));`,
       )
       .replace(
         '#include <emissivemap_fragment>',
         glsl`#include <emissivemap_fragment>
         vec4 mk = texture2D(uMask, eq(vPP));
         float fine = (1. - smoothstep(0., .035, abs(fbm3(vPP * 70. + uSeed)))) * (1. - vFlat) * (1. - smoothstep(.3, .7, m.a));
-        float dry = 1. - smoothstep(.35, .65, texture2D(uPlanShape, planUv(vXZ)).g) * planIn(planUv(vXZ));
+        float dry = 1. - pw;
         // standing water keeps a little of the night sky in it
-        totalEmissiveRadiance += (1. - dry) * uNight * vec3(.035, .055, .085) * (.8 + .4 * snoise(vec3(vXZ * .5, uT * .1)));
+        totalEmissiveRadiance += (1. - dry) * uNight * vec3(.003, .006, .011);
         totalEmissiveRadiance += dry * vec3(1., .38, .1) * uLava * (mk.g * .3 + fine * .8) * (1. - vFlat) * (.2 + uNight * 1.1);`,
       )
   }
@@ -253,7 +271,7 @@ function groundGeometry(fine: number, far: number, segs: number) {
 }
 
 /** which capital each kind of world builds */
-const CAPITALS: Partial<Record<string, (ctx: CapitalCtx) => Capital>> = { defi: lattice }
+const CAPITALS: Partial<Record<string, (ctx: CapitalCtx) => Capital>> = { defi: lattice, agents: quorum }
 
 export class Surface {
   readonly scene = new THREE.Scene()
@@ -409,6 +427,8 @@ export class Surface {
 
   /** a proof published: a ring of light runs out from the governor's tower */
   pulse() {
+    // some capitals carry the news their own way
+    if (this.capital.flash) return this.capital.flash()
     const pl = this.capital.pulse
     const mesh = new THREE.Mesh(
       new THREE.RingGeometry(pl.sides > 8 ? 0.92 : 0.95, 1, pl.sides, 1, pl.rot),
@@ -507,7 +527,8 @@ export class Surface {
       while (k < a.at.length - 1 && a.at[k] < d) k++
       const p0 = a.path[k - 1], p1 = a.path[k] ?? p0
       const f = (d - a.at[k - 1]) / Math.max(1e-6, a.at[k] - a.at[k - 1])
-      arr.setXYZ(i, p0.x + (p1.x - p0.x) * f, this.top + a.lift, p0.z + (p1.z - p0.z) * f)
+      const y0 = p0.y ?? this.top, y1 = p1.y ?? this.top
+      arr.setXYZ(i, p0.x + (p1.x - p0.x) * f, y0 + (y1 - y0) * f + a.lift, p0.z + (p1.z - p0.z) * f)
       return true
     })
     if (changed) this.syncWalkers()

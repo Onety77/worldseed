@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { Builder, box, cylinder, dome, gable, lantern, pyramid, type Tone } from '../kit'
+import { Builder, box, cone, cylinder, dome, gable, lantern, pyramid } from '../kit'
 import { drawPlan, type Capital, type CapitalCtx, type Pt } from '../capital'
 
 /*
@@ -38,6 +38,7 @@ const F = (u: number, v: number, alongV = false) => ({ ...W(u, v), rot: TH + (al
 const Q = 18.6 // the outer edge of the islands
 const MOAT = 20.4 // the far bank of the moat
 const WATER = -0.62
+const BED = -1.0
 const SLAB = -1.1
 const US = [-14.4, -5.2, 0, 5.2, 14.4] // streets running across the river
 const VS = [-15, -7, 7, 15] // streets running along it
@@ -558,14 +559,16 @@ export function lattice(ctx: CapitalCtx): Capital {
     p.weight.fill()
     // the water: the lagoon inside the moat, the river either side
     for (const ctx2 of [p.water, p.height]) {
-      const fill = ctx2 === p.water ? '#fff' : p.grey(WATER)
+      const fill = ctx2 === p.water ? '#fff' : p.grey(BED)
       ctx2.fillStyle = fill
       ctx2.strokeStyle = fill
       ctx2.beginPath()
-      ctx2.roundRect(-MOAT, -MOAT, MOAT * 2, MOAT * 2, 2.4)
+      // (water is allowed a little wider than the cut: the banks decide where it ends)
+      const wide = ctx2 === p.water ? 1.5 : 0
+      ctx2.roundRect(-MOAT - wide, -MOAT - wide, (MOAT + wide) * 2, (MOAT + wide) * 2, 2.4)
       ctx2.fill()
-      mean(course(1), ctx2 === p.water ? 6.6 : 7.6, ctx2)
-      mean(course(-1), ctx2 === p.water ? 6.6 : 7.6, ctx2)
+      mean(course(1), 7.6 + wide * 2, ctx2)
+      mean(course(-1), 7.6 + wide * 2, ctx2)
     }
     // the fields: long strips between ditches, fading out toward the hills
     const pr = (() => {
@@ -611,6 +614,7 @@ export function lattice(ctx: CapitalCtx): Capital {
     p.paint.globalAlpha = 1
   })
 
+  plan.level = WATER
   let spin = 0
   return {
     objects: [group, trunks, crowns, barge, ...mills],
@@ -720,16 +724,6 @@ function bridge(b: Builder, a: [number, number], c: [number, number], top: numbe
     b.edge(L0, L1)
     b.edge(R0, R1)
   }
-}
-
-/** a cone: a turret's cap */
-function cone(b: Builder, x: number, z: number, y: number, r: number, h: number, tone: Tone) {
-  const n = 8
-  for (let i = 0; i < n; i++) {
-    const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2
-    b.tri([x + Math.cos(a0) * r, y, z + Math.sin(a0) * r], [x + Math.cos(a1) * r, y, z + Math.sin(a1) * r], [x, y + h, z], tone)
-  }
-  b.edge([x, y + h, z], [x, y + h + 0.18, z])
 }
 
 /** a tapering tower: a windmill's body */
