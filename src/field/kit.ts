@@ -116,6 +116,13 @@ export class Builder {
     return this
   }
 
+  /** paint this building's walls and roof in colours of its own, until the next at() */
+  tint(wall?: string, roof?: string) {
+    if (wall) this.wall.set(wall)
+    if (roof) this.roof.set(roof)
+    return this
+  }
+
   private colorOf(tone: Tone) {
     switch (tone) {
       case 'roof':
@@ -290,7 +297,7 @@ export function box(b: Builder, f: Frame, y0: number, w: number, d: number, h: n
 }
 
 /** a pitched roof over a w×d footprint, ridge along w */
-function gable(b: Builder, f: Frame, y: number, w: number, d: number, h: number, tone: Tone = 'roof') {
+export function gable(b: Builder, f: Frame, y: number, w: number, d: number, h: number, tone: Tone = 'roof') {
   const e = [P(f, -w, -d, y), P(f, w, -d, y), P(f, w, d, y), P(f, -w, d, y)]
   const r0 = P(f, -w, 0, y + h), r1 = P(f, w, 0, y + h)
   b.quad(e[0], e[1], r1, r0, tone)
@@ -388,7 +395,7 @@ export interface Site {
 }
 
 /** a hipped roof rising to a point over a w×d footprint */
-function pyramid(b: Builder, f: Frame, y: number, w: number, d: number, h: number, tone: Tone = 'roof') {
+export function pyramid(b: Builder, f: Frame, y: number, w: number, d: number, h: number, tone: Tone = 'roof') {
   const e = [P(f, -w, -d, y), P(f, w, -d, y), P(f, w, d, y), P(f, -w, d, y)]
   const top = P(f, 0, 0, y + h)
   for (let i = 0; i < 4; i++) {
