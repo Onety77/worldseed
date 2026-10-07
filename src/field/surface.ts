@@ -6,6 +6,8 @@ import type { Capital, CapitalCtx, Place, Plan, Pt, SurfaceInput } from './capit
 import { classic } from './capitals/classic'
 import { lattice } from './capitals/lattice'
 import { quorum } from './capitals/quorum'
+import { ember } from './capitals/ember'
+import { harrow } from './capitals/harrow'
 
 /*
   Standing on a planet: what you find when you land on a world that earned its own chain.
@@ -120,7 +122,8 @@ function groundMaterial(style: Style, map: THREE.Texture, mask: THREE.Texture, u
       uPlanOn: { value: plan ? 1 : 0 },
       uWater: { value: C(style.shallow).lerp(C('#bfe3e0'), 0.12) },
       uDeep: { value: C(style.deep).lerp(C(style.shallow), 0.25) },
-      uLevel: { value: plan?.level ?? -0.62 },
+      uMolten: { value: plan?.molten ? 1 : 0 },
+      uFlare: plan?.flare ?? { value: 0 },
       uStation: { value: station ? 1 : 0 },
       uSeed: { value: seed },
       uLava: { value: style.lava ? 1 : 0 },
@@ -130,7 +133,7 @@ function groundMaterial(style: Style, map: THREE.Texture, mask: THREE.Texture, u
       uNight: u.uNight,
       uT: u.uT,
     })
-    const pars = `uniform sampler2D uMap, uMask, uPlanShape, uPlanPaint;\nuniform vec3 uLow, uMid, uField, uWater, uDeep;\nuniform float uR, uCity, uStation, uSeed, uLava, uNight, uT, uPlanHalf, uPlanOn, uLevel;\nvarying vec3 vPP;\nvarying vec2 vXZ;\nvarying float vY;\nvarying float vFlat;\n${NOISE}\n${equirect}\n${planFn}`
+    const pars = `uniform sampler2D uMap, uMask, uPlanShape, uPlanPaint;\nuniform vec3 uLow, uMid, uField, uWater, uDeep;\nuniform float uR, uCity, uStation, uSeed, uLava, uNight, uT, uPlanHalf, uPlanOn, uMolten, uFlare;\nvarying vec3 vPP;\nvarying vec2 vXZ;\nvarying float vY;\nvarying float vFlat;\n${NOISE}\n${equirect}\n${planFn}`
     const groundFn = glsl`
     vec3 ground(vec3 d) {
       vec3 pp = vec3(d.x, -d.z, d.y);
@@ -193,14 +196,23 @@ function groundMaterial(style: Style, map: THREE.Texture, mask: THREE.Texture, u
         col = mix(col, pc.rgb, pc.a * pin);
         // water lies wherever the ground is below the plan's water level: a crisp waterline,
         // light over the shallows and darker as it deepens
-        float under = uLevel - vY;
+        vec4 ps = texture2D(uPlanShape, pu);
+        float under = ps.a - vY;
         float fw = max(fwidth(vY), .002);
-        float pw = smoothstep(.35, .65, texture2D(uPlanShape, pu).g) * pin * smoothstep(-fw, fw, under);
+        float pw = smoothstep(.35, .65, ps.g) * pin * smoothstep(-fw, fw, under);
         vec3 water = mix(uWater, uDeep, smoothstep(0., 1.1, under));
         // fine ripples, longer one way than the other, never patches
         water *= (.96 + .04 * snoise(vec3(vXZ.x * 1.4, vXZ.y * 4.5, uT * .25))) * mix(1., .55, uNight);
         // a thin bright line where it meets the shore
         water = mix(water, uWater * 1.35 + .05, (1. - smoothstep(0., .05, under)) * .5 * (1. - uNight * .8));
+        // or lava: a dark crust split by glowing cracks that crawl slowly along, hottest at its edges
+        vec2 fl = vXZ * .8 + vec2(uT * .04, uT * .025);
+        float crack = 1. - smoothstep(0., .07, abs(snoise(vec3(fl, uT * .05))));
+        crack = max(crack, (1. - smoothstep(0., .045, abs(snoise(vec3(vXZ * 2.1, uT * .08 + 3.))))) * .6);
+        crack = max(crack, 1. - smoothstep(0., .14, under));
+        vec3 lava = mix(vec3(.07, .04, .035), vec3(.95, .3, .07), crack);
+        water = mix(water, lava, uMolten);
+        float molten = uMolten * pw * (.12 + crack);
         col = mix(col, water, pw);
         diffuseColor.rgb = col;`,
       )
@@ -217,7 +229,8 @@ function groundMaterial(style: Style, map: THREE.Texture, mask: THREE.Texture, u
         float fine = (1. - smoothstep(0., .035, abs(fbm3(vPP * 70. + uSeed)))) * (1. - vFlat) * (1. - smoothstep(.3, .7, m.a));
         float dry = 1. - pw;
         // standing water keeps a little of the night sky in it
-        totalEmissiveRadiance += (1. - dry) * uNight * vec3(.003, .006, .011);
+        totalEmissiveRadiance += (1. - dry) * uNight * vec3(.003, .006, .011) * (1. - uMolten);
+        totalEmissiveRadiance += molten * vec3(1., .36, .08) * (.9 + uNight * .8) * (1. + uFlare);
         totalEmissiveRadiance += dry * vec3(1., .38, .1) * uLava * (mk.g * .3 + fine * .8) * (1. - vFlat) * (.2 + uNight * 1.1);`,
       )
   }
@@ -271,7 +284,7 @@ function groundGeometry(fine: number, far: number, segs: number) {
 }
 
 /** which capital each kind of world builds */
-const CAPITALS: Partial<Record<string, (ctx: CapitalCtx) => Capital>> = { defi: lattice, agents: quorum }
+const CAPITALS: Partial<Record<string, (ctx: CapitalCtx) => Capital>> = { defi: lattice, agents: quorum, game: ember, prediction: harrow }
 
 export class Surface {
   readonly scene = new THREE.Scene()
@@ -373,7 +386,7 @@ export class Surface {
 
     // the capital, built in the planet's own way; then the ground it reshapes
     const ctx: CapitalCtx = { input, r, top: this.top, station: this.station, hi, shared: this.shared, style: look.style, place: (key, kind, x, y, z) => this.places.push({ key, kind, x, y, z }) }
-    this.capital = (!this.station && CAPITALS[input.template]?.(ctx)) || classic(ctx)
+    this.capital = CAPITALS[input.template]?.(ctx) ?? classic(ctx)
     this.stops = this.places.map((p) => ({ x: p.x, z: p.z }))
     this.ground = new THREE.Mesh(groundGeometry(hi ? 0.42 : 0.7, hi ? 110 : 80, hi ? 384 : 224), groundMaterial(look.style, look.map, look.mask, this.u, this.station, seed, this.capital.mesa, this.capital.plan))
     this.ground.receiveShadow = true

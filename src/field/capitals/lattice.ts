@@ -614,7 +614,6 @@ export function lattice(ctx: CapitalCtx): Capital {
     p.paint.globalAlpha = 1
   })
 
-  plan.level = WATER
   let spin = 0
   return {
     objects: [group, trunks, crowns, barge, ...mills],

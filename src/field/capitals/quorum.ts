@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { Builder, box, cone, cylinder, dome, gable, type Tone } from '../kit'
+import { Builder, box, cone, cylinder, dish, dome, gable, strut, taper } from '../kit'
 import { drawPlan, type Capital, type CapitalCtx, type Pt } from '../capital'
 
 /*
@@ -585,7 +585,6 @@ export function quorum(ctx: CapitalCtx): Capital {
     }
     p.paint.globalAlpha = 1
   })
-  plan.level = WATER
 
   // walkers: from island to island along the piers, the shortest way
   const nearest = (pt: Pt) => {
@@ -687,40 +686,6 @@ export function quorum(ctx: CapitalCtx): Capital {
 
 // ── the parts ──
 
-/** a thin square post from one point to another */
-function strut(b: Builder, a: number[], c: number[], w: number, tone: Tone) {
-  const d = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
-  const len = Math.hypot(d[0], d[1], d[2]) || 1
-  const n = [d[0] / len, d[1] / len, d[2] / len]
-  const ref = Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]
-  const u = norm(cross(n, ref)), v = cross(n, u)
-  const off = (p: number[], i: number, k: number) => [p[0] + (u[0] * i + v[0] * k) * w, p[1] + (u[1] * i + v[1] * k) * w, p[2] + (u[2] * i + v[2] * k) * w]
-  const sq = [[-1, -1], [1, -1], [1, 1], [-1, 1]]
-  for (let i = 0; i < 4; i++) {
-    const [i0, k0] = sq[i], [i1, k1] = sq[(i + 1) % 4]
-    b.quad(off(a, i0, k0), off(a, i1, k1), off(c, i1, k1), off(c, i0, k0), tone)
-  }
-}
-
-/** a dish antenna: a shallow bowl facing along n */
-function dish(b: Builder, c: number[], dir: number[], r: number) {
-  const n = norm(dir)
-  const ref = Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]
-  const u = norm(cross(n, ref)), v = cross(n, u)
-  const at = (q: number, k: number) => {
-    const rr = r * k, depth = r * 0.35 * k * k
-    return [c[0] + (u[0] * Math.cos(q) + v[0] * Math.sin(q)) * rr + n[0] * depth, c[1] + (u[1] * Math.cos(q) + v[1] * Math.sin(q)) * rr + n[1] * depth, c[2] + (u[2] * Math.cos(q) + v[2] * Math.sin(q)) * rr + n[2] * depth]
-  }
-  const N = 12
-  for (let i = 0; i < N; i++) {
-    const q0 = (i / N) * Math.PI * 2, q1 = ((i + 1) / N) * Math.PI * 2
-    b.tri(c, at(q0, 0.5), at(q1, 0.5), 'canvas')
-    b.quad(at(q0, 0.5), at(q0, 1), at(q1, 1), at(q1, 0.5), 'canvas')
-    b.edge(at(q0, 1), at(q1, 1))
-  }
-  b.edge(c, [c[0] + n[0] * r * 0.6, c[1] + n[1] * r * 0.6, c[2] + n[2] * r * 0.6])
-}
-
 /** a slim relay mast with a light on top; returns where its cable ties on */
 function mastAt(b: Builder, x: number, z: number, y0: number, h: number, beacons: number[][]) {
   b.at(y0).tint('#c9d0d4')
@@ -753,16 +718,6 @@ function pier(b: Builder, a: Pt, c: Pt) {
   }
 }
 
-/** a tapering round tower, from y up by h; returns its top */
-function taper(b: Builder, x: number, z: number, y: number, r0: number, r1: number, h: number, tone: Tone) {
-  const n = 14
-  for (let i = 0; i < n; i++) {
-    const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2
-    b.quad([x + Math.cos(a0) * r0, y, z + Math.sin(a0) * r0], [x + Math.cos(a1) * r0, y, z + Math.sin(a1) * r0], [x + Math.cos(a1) * r1, y + h, z + Math.sin(a1) * r1], [x + Math.cos(a0) * r1, y + h, z + Math.sin(a0) * r1], tone)
-  }
-  return y + h
-}
-
 /** a small boat: a ferry with a wheelhouse, or a sailing boat with a mast and a white sail */
 function boatGeometry(sail: boolean) {
   const s = new THREE.Shape()
@@ -791,10 +746,4 @@ function boatGeometry(sail: boolean) {
   const g = mergeGeometries(parts)
   g.computeVertexNormals()
   return g
-}
-
-const cross = (a: number[], c: number[]) => [a[1] * c[2] - a[2] * c[1], a[2] * c[0] - a[0] * c[2], a[0] * c[1] - a[1] * c[0]]
-const norm = (a: number[]) => {
-  const l = Math.hypot(a[0], a[1], a[2]) || 1
-  return [a[0] / l, a[1] / l, a[2] / l]
 }

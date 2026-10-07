@@ -99,12 +99,14 @@ const PLAN_H = 8
 export interface Plan {
   /** half the width of the square the plan covers */
   half: number
-  /** r: height, g: standing water, b: how strongly the height applies */
+  /** r: height, g: where standing water may lie, b: how strongly the height applies, a: the water's surface */
   shape: THREE.DataTexture
   /** a tint over the ground: colour, and how much of it */
   paint: THREE.CanvasTexture
-  /** the height of standing water: ground below it, where water is allowed, is under water */
-  level?: number
+  /** what stands in the low places: water, or (on a volcanic world) lava */
+  molten?: boolean
+  /** how much brighter the lava burns just now (a capital can flare it) */
+  flare?: { value: number }
 }
 
 export interface Pens {
@@ -114,6 +116,8 @@ export interface Pens {
   weight: CanvasRenderingContext2D
   /** the height to press to, drawn as grey(h) */
   height: CanvasRenderingContext2D
+  /** the surface of the standing water (or lava) here, drawn as grey(h): it can step down terraces */
+  level: CanvasRenderingContext2D
   /** colour laid over the ground (alpha is how much) */
   paint: CanvasRenderingContext2D
   /** the grey that stands for a height */
@@ -126,7 +130,7 @@ export interface Pens {
  * Draw a plan. The pens draw in the city's own coordinates: (u, v) turned by `rot` into
  * the world's (x, z). Each of the shape maps is then softened by its own blur, in world units.
  */
-export function drawPlan(half: number, res: number, rot: number, blur: { water: number; weight: number; height: number }, draw: (p: Pens) => void): Plan {
+export function drawPlan(half: number, res: number, rot: number, blur: { water: number; weight: number; height: number }, draw: (p: Pens) => void, level = -0.62): Plan {
   const k = res / (2 * half)
   const pen = (fill: string) => {
     const cv = document.createElement('canvas')
@@ -142,7 +146,7 @@ export function drawPlan(half: number, res: number, rot: number, blur: { water: 
     const v = Math.round(Math.min(255, Math.max(0, 128 + (h / PLAN_H) * 127)))
     return `rgb(${v},${v},${v})`
   }
-  const pens: Pens = { water: pen('#000'), weight: pen('#000'), height: pen(grey(0)), paint: pen('rgba(0,0,0,0)'), grey, k }
+  const pens: Pens = { water: pen('#000'), weight: pen('#000'), height: pen(grey(0)), level: pen(grey(level)), paint: pen('rgba(0,0,0,0)'), grey, k }
   draw(pens)
 
   const read = (g: CanvasRenderingContext2D, px: number) => {
@@ -151,13 +155,13 @@ export function drawPlan(half: number, res: number, rot: number, blur: { water: 
     for (let i = 0; i < out.length; i++) out[i] = d[i * 4] / 255
     return soften(out, res, Math.round(px * k))
   }
-  const hgt = read(pens.height, blur.height), wat = read(pens.water, blur.water), wgt = read(pens.weight, blur.weight)
+  const hgt = read(pens.height, blur.height), wat = read(pens.water, blur.water), wgt = read(pens.weight, blur.weight), lvl = read(pens.level, blur.height)
   const data = new Uint16Array(res * res * 4)
   for (let i = 0; i < res * res; i++) {
     data[i * 4] = THREE.DataUtils.toHalfFloat(((hgt[i] * 255 - 128) / 127) * PLAN_H)
     data[i * 4 + 1] = THREE.DataUtils.toHalfFloat(wat[i])
     data[i * 4 + 2] = THREE.DataUtils.toHalfFloat(wgt[i])
-    data[i * 4 + 3] = THREE.DataUtils.toHalfFloat(1)
+    data[i * 4 + 3] = THREE.DataUtils.toHalfFloat(((lvl[i] * 255 - 128) / 127) * PLAN_H)
   }
   const shape = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.HalfFloatType)
   shape.magFilter = shape.minFilter = THREE.LinearFilter
